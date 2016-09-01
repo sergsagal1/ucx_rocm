@@ -257,6 +257,7 @@ UCS_TEST_P(test_pd, alloc_advise) {
                    sysv, \
                    xpmem, \
                    cuda, \
+                   rocm, \
                    ib, \
                    ugni \
                    )

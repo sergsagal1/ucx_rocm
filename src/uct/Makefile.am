@@ -192,6 +192,19 @@ libuct_la_SOURCES += \
     cuda/cuda_ep.c
 endif
 
+if HAVE_ROCM
+noinst_HEADERS += \
+    rocm/rocm_md.h \
+    rocm/rocm_iface.h \
+    rocm/rocm_ep.h
+
+libuct_la_SOURCES += \
+    rocm/rocm_md.c \
+    rocm/rocm_iface.c \
+    rocm/rocm_ep.c
+endif
+
+
 # FIXME these should be done conditionally
 noinst_HEADERS += \
     sm/base/sm_iface.h \
