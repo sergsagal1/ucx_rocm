@@ -54,11 +54,11 @@ UCS_CLASS_DEFINE_DELETE_FUNC(uct_rocm_ep_t, uct_ep_t);
                    (_rkey))
 
 
-static inline ucs_status_t uct_rocm_copy(uct_ep_h tl_ep, const void *buffer,
-                                        size_t length,  uint64_t remote_addr,
+static inline ucs_status_t uct_rocm_copy(uct_ep_h tl_ep, const uct_iov_t *iov,
+                                        size_t iovcnt,  uint64_t remote_addr,
                                         uct_rocm_key_t *key, int put)
 {
-   if (0 == length) {
+   if (0 == iovcnt) {
         ucs_trace_data("Zero length request: skip it");
         return UCS_OK;
     }
@@ -75,32 +75,42 @@ static inline ucs_status_t uct_rocm_copy(uct_ep_h tl_ep, const void *buffer,
     // hsa_free_memory(remote_gpu_addr);
 
 
-    uct_rocm_trace_data(remote_addr, (uintptr_t)key, "%s [length %zu]",
+/*    uct_rocm_trace_data(remote_addr, (uintptr_t)key, "%s [length %zu]",
                         put ? "PUT_ZCOPY":"GET_ZCOPY",
                         length);
+                        */
     return UCS_OK;
 }
 
-ucs_status_t uct_rocm_ep_put_zcopy(uct_ep_h tl_ep, const void *buffer, size_t length,
-                                   uct_mem_h memh, uint64_t remote_addr,
-                                   uct_rkey_t rkey, uct_completion_t *comp)
+
+
+ucs_status_t uct_rocm_ep_put_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov, size_t iovcnt,
+                                   uint64_t remote_addr,  uct_rkey_t rkey,
+                                   uct_completion_t *comp)
 {
     uct_rocm_key_t *key = (uct_rocm_key_t *)rkey;
     ucs_status_t status;
 
-    status = uct_rocm_copy(tl_ep, buffer, length, remote_addr, key, 1);
-    UCT_TL_EP_STAT_OP_IF_SUCCESS(status, ucs_derived_of(tl_ep, uct_base_ep_t), PUT, ZCOPY, length);
+    UCT_CHECK_IOV_SIZE(iovcnt, uct_rocm_iface_get_max_iov(), "uct_rocm_ep_put_zcopy");
+
+    status = uct_rocm_copy(tl_ep, iov, iovcnt,  remote_addr, key, 1);
+    UCT_TL_EP_STAT_OP_IF_SUCCESS(status, ucs_derived_of(tl_ep, uct_base_ep_t),
+                                PUT, ZCOPY, uct_iov_total_length(iov, iovcnt));
     return status;
 }
 
-ucs_status_t uct_rocm_ep_get_zcopy(uct_ep_h tl_ep, void *buffer, size_t length,
-                                   uct_mem_h memh, uint64_t remote_addr,
-                                   uct_rkey_t rkey, uct_completion_t *comp)
+
+ucs_status_t uct_rocm_ep_get_zcopy(uct_ep_h tl_ep,  const uct_iov_t *iov, size_t iovcnt,
+                                   uint64_t remote_addr, uct_rkey_t rkey,
+                                   uct_completion_t *comp)
 {
     uct_rocm_key_t *key = (uct_rocm_key_t *)rkey;
     ucs_status_t status;
 
-    status = uct_rocm_copy(tl_ep, buffer, length, remote_addr, key, 0);
-    UCT_TL_EP_STAT_OP_IF_SUCCESS(status, ucs_derived_of(tl_ep, uct_base_ep_t), GET, ZCOPY, length);
+    UCT_CHECK_IOV_SIZE(iovcnt, uct_rocm_iface_get_max_iov(), "uct_rocm_ep_put_zcopy");
+
+    status = uct_rocm_copy(tl_ep, iov, iovcnt, remote_addr, key, 0);
+    UCT_TL_EP_STAT_OP_IF_SUCCESS(status, ucs_derived_of(tl_ep, uct_base_ep_t),
+                                 GET, ZCOPY, uct_iov_total_length(iov, iovcnt));
     return status;
 }

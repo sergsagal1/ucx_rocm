@@ -43,4 +43,10 @@ typedef struct uct_rocm_iface_config {
 
 extern uct_tl_component_t uct_rocm_tl;
 
+static UCS_F_ALWAYS_INLINE
+size_t uct_rocm_iface_get_max_iov()
+{
+    return 1;
+}
+
 #endif

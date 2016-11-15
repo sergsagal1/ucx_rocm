@@ -73,7 +73,7 @@ static void uct_rocm_md_close(uct_md_h md)
 }
 
 static ucs_status_t uct_rocm_mem_reg(uct_md_h md, void *address, size_t length,
-                                     uct_mem_h *memh_p)
+                                     unsigned flags, uct_mem_h *memh_p)
 {
 //    uct_rocm_md_t *rocm_md = (uct_rocm_md_t *)md;
     uct_rocm_key_t *key;
