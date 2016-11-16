@@ -1,7 +1,7 @@
 /**
 * Copyright (C) Mellanox Technologies Ltd. 2001-2014.  ALL RIGHTS RESERVED.
 * Copyright (C) UT-Battelle, LLC. 2015. ALL RIGHTS RESERVED.
-* Copyright (C) The University of Tennessee and The University 
+* Copyright (C) The University of Tennessee and The University
 *               of Tennessee Research Foundation. 2015. ALL RIGHTS RESERVED.
 * See file LICENSE for terms.
 */
@@ -179,6 +179,11 @@ typedef struct ucx_perf_params {
         ucp_perf_datatype_t    recv_datatype;
     } ucp;
 
+#ifdef HAVE_ROCM
+    int             use_rocm;
+    unsigned long   hsa_agent_index;
+    unsigned long   hsa_pool_index;
+#endif
 } ucx_perf_params_t;
 
 

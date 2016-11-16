@@ -14,6 +14,9 @@
 #include <malloc.h>
 #include <unistd.h>
 
+#ifdef HAVE_ROCM
+#include "libperf_rocm.h"
+#endif
 
 typedef struct {
     union {
@@ -104,11 +107,41 @@ static ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf,
 
     /* TODO use params->alignment  */
 
+#if HAVE_ROCM
+    if (params->use_rocm) {
+        status = rocm_init(params);
+
+        if (status != UCS_OK)
+            goto err;
+
+    perf->send_buffer = rocm_allocate_transfer_buffer(params, buffer_size);
+
+    if (NULL == perf->send_buffer) {
+        status = UCS_ERR_NO_MEMORY;
+        goto err;
+    }
+
+    perf->recv_buffer =  rocm_allocate_transfer_buffer(params, buffer_size);
+
+    if (NULL == perf->recv_buffer) {
+        status = UCS_ERR_NO_MEMORY;
+        rocm_free_transfer_buffer(perf->send_buffer);
+        goto err;
+    }
+
+    perf->offset = 0;
+
+    return UCS_OK;
+    }
+#endif
+
+    /* TODO use params->alignment  */
+
     flags = (params->flags & UCX_PERF_TEST_FLAG_MAP_NONBLOCK) ?
                     UCT_MD_MEM_FLAG_NONBLOCK : 0;
 
     /* Allocate send buffer memory */
-    status = uct_iface_mem_alloc(perf->uct.iface, 
+    status = uct_iface_mem_alloc(perf->uct.iface,
                                  buffer_size * params->thread_count,
                                  flags, "perftest", &perf->uct.send_mem);
     if (status != UCS_OK) {
@@ -120,7 +153,7 @@ static ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf,
     perf->send_buffer = perf->uct.send_mem.address;
 
     /* Allocate receive buffer memory */
-    status = uct_iface_mem_alloc(perf->uct.iface, 
+    status = uct_iface_mem_alloc(perf->uct.iface,
                                  buffer_size * params->thread_count,
                                  flags, "perftest", &perf->uct.recv_mem);
     if (status != UCS_OK) {
@@ -155,8 +188,18 @@ err:
     return status;
 }
 
-static void uct_perf_test_free_mem(ucx_perf_context_t *perf)
+static void uct_perf_test_free_mem(ucx_perf_context_t *perf, ucx_perf_params_t *params)
 {
+#if HAVE_ROCM
+    if (params->use_rocm) {
+
+        rocm_free_transfer_buffer(perf->send_buffer);
+        rocm_free_transfer_buffer(perf->recv_buffer);
+        rocm_shutdown();
+        return;
+    }
+#endif
+
     uct_iface_mem_free(&perf->uct.send_mem);
     uct_iface_mem_free(&perf->uct.recv_mem);
     free(perf->uct.iov);
@@ -1147,8 +1190,9 @@ static ucs_status_t uct_perf_setup(ucx_perf_context_t *perf, ucx_perf_params_t *
     return UCS_OK;
 
 out_free_mem:
-    uct_perf_test_free_mem(perf);
+    uct_perf_test_free_mem(perf, params);
 out_iface_close:
+
     uct_iface_close(perf->uct.iface);
 out_destroy_md:
     uct_md_close(perf->uct.md);
@@ -1160,10 +1204,10 @@ out:
     return status;
 }
 
-static void uct_perf_cleanup(ucx_perf_context_t *perf)
+static void uct_perf_cleanup(ucx_perf_context_t *perf, ucx_perf_params_t *params)
 {
     uct_perf_test_cleanup_endpoints(perf);
-    uct_perf_test_free_mem(perf);
+    uct_perf_test_free_mem(perf, params);
     uct_iface_close(perf->uct.iface);
     uct_md_close(perf->uct.md);
     uct_worker_destroy(perf->uct.worker);
@@ -1232,7 +1276,7 @@ err:
     return status;
 }
 
-static void ucp_perf_cleanup(ucx_perf_context_t *perf)
+static void ucp_perf_cleanup(ucx_perf_context_t *perf, ucx_perf_params_t *params)
 {
     ucp_perf_test_cleanup_endpoints(perf);
     rte_call(perf, barrier);
@@ -1243,7 +1287,7 @@ static void ucp_perf_cleanup(ucx_perf_context_t *perf)
 
 static struct {
     ucs_status_t (*setup)(ucx_perf_context_t *perf, ucx_perf_params_t *params);
-    void         (*cleanup)(ucx_perf_context_t *perf);
+    void         (*cleanup)(ucx_perf_context_t *perf, ucx_perf_params_t *params);
     ucs_status_t (*run)(ucx_perf_context_t *perf);
 } ucx_perf_funcs[] = {
     [UCX_PERF_API_UCT] = {uct_perf_setup, uct_perf_cleanup, uct_perf_test_dispatch},

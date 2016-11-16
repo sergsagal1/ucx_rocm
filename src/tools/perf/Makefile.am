@@ -13,7 +13,7 @@ ucx_perftest_CC = $(MPICC)
 else
 ucx_perftest_CC = $(CC)
 endif
-	
+
 perftestdir = $(pkgdatadir)/perftest
 dist_perftest_DATA = \
 	$(top_srcdir)/contrib/ucx_perftest_config/msg_pow2 \
@@ -26,23 +26,29 @@ noinst_LTLIBRARIES    = libucxperf.la
 AM_CPPFLAGS           = \
     -I$(abs_top_srcdir)/src \
     -I$(abs_top_builddir)/src \
-    $(RTE_CPPFLAGS)
+    $(RTE_CPPFLAGS) \
+	$(ROCM_CPPFLAGS)
 
 noinst_HEADERS = \
 	libperf.h \
-	libperf_int.h
+	libperf_int.h \
+	libperf_rocm.h
 libucxperf_la_SOURCES = \
 	libperf.c \
+	libperf_rocm.c \
 	uct_tests.cc \
 	ucp_tests.cc
 libucxperf_la_LDFLAGS = \
 	$(RTE_LDFLAGS) \
 	$(OPENMP_CFLAGS)
+	$(ROCM_LDFLAGS)
 libucxperf_la_CXXFLAGS = \
 	-nostdlib -fno-exceptions -fno-rtti \
 	$(OPENMP_CFLAGS)
+	$(ROCM_CPPFLAGS)
 libucxperf_la_CFLAGS = \
 	$(OPENMP_CFLAGS)
+	$(ROCM_CFLAGS)
 libucxperf_la_LIBADD = \
 	$(abs_top_builddir)/src/uct/libuct.la \
 	$(abs_top_builddir)/src/ucp/libucp.la \
@@ -52,9 +58,11 @@ libucxperf_la_LIBADD = \
 ucx_perftest_SOURCES  = perftest.c
 ucx_perftest_LDFLAGS    = \
      $(RTE_LDFLAGS) \
-     $(OPENMP_CFLAGS)
+     $(OPENMP_CFLAGS) \
+	$(ROCM_LDFLAGS)
 ucx_perftest_CFLAGS   = \
      $(OPENMP_CFLAGS)
+	$(ROCM_CFLAGS)
 ucx_perftest_LDADD    = \
      $(abs_top_builddir)/src/uct/libuct.la \
      $(abs_top_builddir)/src/ucp/libucp.la \
