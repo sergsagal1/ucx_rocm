@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Advanced Micro Devices, Inc.
+ * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,8 +26,7 @@
 #include <ucs/sys/sys.h>
 #include <ucs/debug/memtrack.h>
 
-#include <hsa.h>
-#include <hsa_ext_amd.h>
+#include "rocm_common.h"
 
 
 static ucs_status_t uct_rocm_md_query(uct_md_h md, uct_md_attr_t *md_attr)
@@ -38,8 +37,10 @@ static ucs_status_t uct_rocm_md_query(uct_md_h md, uct_md_attr_t *md_attr)
     md_attr->cap.flags         = UCT_MD_FLAG_REG;
     md_attr->cap.max_alloc     = 0;
     md_attr->cap.max_reg       = ULONG_MAX;
-    md_attr->reg_cost.overhead = 0;
-    md_attr->reg_cost.growth   = 0;
+
+    /** @todo: Put the real numbers */
+    md_attr->reg_cost.overhead = 1000.0e-9;
+    md_attr->reg_cost.growth   = 0.007e-9;
 
     memset(&md_attr->local_cpus, 0xff, sizeof(md_attr->local_cpus));
     return UCS_OK;
@@ -52,8 +53,17 @@ static ucs_status_t uct_rocm_query_md_resources(uct_md_resource_desc_t **resourc
 
     ucs_status_t status;
 
+    /* Initialize ROCm helper library.
+     * HSA RT will be initialized as part of library initialization.
+    */
+    if (uct_rocm_init() != HSA_STATUS_SUCCESS) {
+        ucs_error("Could not initialize ROCm support");
+        return UCS_ERR_NO_DEVICE;
+    }
+
     status = uct_single_md_resource(&uct_rocm_md_component, resources_p,
                                   num_resources_p);
+
 
     ucs_trace("rocm md name: %s, resources %d", (*resources_p)->md_name, *num_resources_p);
 
@@ -63,11 +73,6 @@ static ucs_status_t uct_rocm_query_md_resources(uct_md_resource_desc_t **resourc
 static void uct_rocm_md_close(uct_md_h md)
 {
     uct_rocm_md_t *rocm_md = (uct_rocm_md_t *)md;
-    hsa_status_t status = hsa_shut_down();
-
-    if (HSA_STATUS_SUCCESS == status) {
-      ucs_error("Failed to shutdown HSA RT. HSA Status : %d", status);
-    }
 
     ucs_free(rocm_md);
 }
@@ -75,30 +80,54 @@ static void uct_rocm_md_close(uct_md_h md)
 static ucs_status_t uct_rocm_mem_reg(uct_md_h md, void *address, size_t length,
                                      unsigned flags, uct_mem_h *memh_p)
 {
-//    uct_rocm_md_t *rocm_md = (uct_rocm_md_t *)md;
+    hsa_status_t  status;
+    hsa_amd_ipc_memory_t ipc_handle;
     uct_rocm_key_t *key;
+
+    ucs_trace("uct_rocm_mem_reg: address 0x%p size 0x%lx memh %p (%p)",
+              address, length, memh_p, *memh_p);
+
+    if (!uct_rocm_is_ptr_gpu_accessible(address)) {
+        ucs_trace("Address %p is not GPU allocated.", address);
+        return UCS_ERR_INVALID_ADDR;
+    }
 
     key = ucs_malloc(sizeof(uct_rocm_key_t), "uct_rocm_key_t");
     if (NULL == key) {
         ucs_error("Failed to allocate memory for uct_rocm_key_t");
         return UCS_ERR_NO_MEMORY;
     }
+    ucs_trace("uct_rocm_mem_reg: allocated key %p", key);
 
-    // TODO: Call HSA RT IPC to get import  IPC handle
-    // key->ipc_handle  = hsa_export_handle(address);
+    /* Register memory for sharing */
+    status = hsa_amd_ipc_memory_create(address, length, &ipc_handle);
 
-    key->address = (uintptr_t)address;
-    key->length  = (uint64_t) length;
+    if (HSA_STATUS_SUCCESS != status) {
+        ucs_error("HSA IPC failed to create  IPC handle for 0x%p: 0x%x",
+                address, status);
+        ucs_free(key);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    key->ipc_handle = ipc_handle;
+    key->length     = length;
+    key->address    = (uintptr_t) address;
 
     *memh_p = key;
+
+    ucs_trace("uct_rocm_mem_reg: Success");
+
     return UCS_OK;
 }
 
 static ucs_status_t uct_rocm_mem_dereg(uct_md_h md, uct_mem_h memh)
 {
     uct_rocm_key_t *key = (uct_rocm_key_t *)memh;
+    ucs_trace("uct_rocm_mem_dereg: key  %p", key);
 
-    // TODO: Call HSA RT IPC to destroy exported IPC handle
+    /* We should do nothing. If memory was shared then it will be
+     * shared till all processes "free" such memory.
+     */
 
     ucs_free(key);
     return UCS_OK;
@@ -109,12 +138,13 @@ static ucs_status_t uct_rocm_rkey_pack(uct_md_h md, uct_mem_h memh,
 {
     uct_rocm_key_t *packed = (uct_rocm_key_t*)rkey_buffer;
     uct_rocm_key_t *key = (uct_rocm_key_t *)memh;
-    packed->length  = (uint64_t)key->length;
-    packed->address = (uintptr_t)key->address;
-    // packed->ipc_handle = key->ipc_handle;
+    packed->ipc_handle  = key->ipc_handle;
+    packed->length      = key->length;
+    packed->address     = key->address;
 
-    ucs_trace("packed rkey: length  0x%"PRIx64" address %"PRIxPTR,
-              key->length, key->address);
+    ucs_trace("packed (%p) rkey (%p): length 0x%lx address %"PRIxPTR,
+              packed, key, key->length, key->address);
+
     return UCS_OK;
 }
 static ucs_status_t uct_rocm_rkey_unpack(uct_md_component_t *mdc,
@@ -129,27 +159,28 @@ static ucs_status_t uct_rocm_rkey_unpack(uct_md_component_t *mdc,
         ucs_error("Failed to allocate memory for uct_rocm_key_t");
         return UCS_ERR_NO_MEMORY;
     }
-    key->length  = packed->length;
-    key->address = packed->address;
-    // key->ipc_handle = packed->ipc_handle;
+    key->ipc_handle  = packed->ipc_handle;
+    key->length      = packed->length;
+    key->address     = packed->address;
 
     *handle_p = NULL;
     *rkey_p = (uintptr_t)key;
-    ucs_trace("unpacked rkey: key %p length  0x%"PRIx64" address %"PRIxPTR,
-              key, key->length, key->address);
+    ucs_trace("unpacked rkey: key %p length 0x%x address %"PRIxPTR,
+              key, (int) key->length, key->address);
     return UCS_OK;
 }
 static ucs_status_t uct_rocm_rkey_release(uct_md_component_t *mdc, uct_rkey_t rkey,
                                           void *handle)
 {
     ucs_assert(NULL == handle);
+    ucs_trace("uct_rocm_rkey_release: key %p", (void *)rkey);
     ucs_free((void *)rkey);
     return UCS_OK;
 }
+
 static ucs_status_t uct_rocm_md_open(const char *md_name, const uct_md_config_t *md_config,
                                      uct_md_h *md_p)
 {
-    hsa_status_t   status;
     uct_rocm_md_t *rocm_md;
 
 
@@ -161,14 +192,7 @@ static ucs_status_t uct_rocm_md_open(const char *md_name, const uct_md_config_t 
         .mem_dereg    = uct_rocm_mem_dereg
     };
 
-    ucs_error("uct_rocm_md_open");
-
-    status = hsa_init();
-
-    if (HSA_STATUS_SUCCESS != status) {
-        ucs_error("Failed to initialize HSA RT. HSA Status %d", status);
-        return UCS_ERR_NO_RESOURCE;
-    }
+    ucs_trace("uct_rocm_md_open");
 
     rocm_md = ucs_malloc(sizeof(uct_rocm_md_t), "uct_rocm_md_t");
     if (NULL == rocm_md) {
@@ -182,7 +206,7 @@ static ucs_status_t uct_rocm_md_open(const char *md_name, const uct_md_config_t 
     *md_p = (uct_md_h)rocm_md;
 
 
-    ucs_error("uct_rocm_md_open - success");
+    ucs_trace("uct_rocm_md_open - success");
     return UCS_OK;
 }
 

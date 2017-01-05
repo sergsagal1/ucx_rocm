@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Advanced Micro Devices, Inc.
+ * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,8 @@
 
 #include <uct/base/uct_log.h>
 #include <ucs/debug/memtrack.h>
+
+#include "rocm_common.h"
 
 static UCS_CLASS_INIT_FUNC(uct_rocm_ep_t, uct_iface_t *tl_iface,
                            const uct_device_addr_t *dev_addr,
@@ -58,27 +60,65 @@ static inline ucs_status_t uct_rocm_copy(uct_ep_h tl_ep, const uct_iov_t *iov,
                                         size_t iovcnt,  uint64_t remote_addr,
                                         uct_rocm_key_t *key, int put)
 {
-   if (0 == iovcnt) {
-        ucs_trace_data("Zero length request: skip it");
+    ucs_trace("uct_rocm_copy: iovcnt %d remote_address %p, put %d",
+             (int) iovcnt, (void*)remote_addr, put);
+
+    ucs_trace("uct_rocm_copy: key = address  %p length 0x%lx",
+                (void*)key->address, key->length);
+
+    if (0 == iovcnt) {
+        ucs_trace_data("Zero length request: ignore");
         return UCS_OK;
     }
 
-    // Import ipc handle and get address
-    // void *remote_gpu_addr = hsa_export_ipc_mem_handle(key->ipc_handle);
-    //
-    // // hsa_status_t hsa_memory_copy(void *dst,const void *src,size_t size);
-    // if (put)
-    //      hsa_memory_copy(remote_gpu_addr, buffer, length);
-    // else
-    //      hsa_memory_copy(buffer, remote_gpu_addr, length);
-    //
-    // hsa_free_memory(remote_gpu_addr);
+    if (1 != iovcnt) {
+        ucs_error("Invalid iovcnt. Must be 1. Passed : %d", (int) iovcnt);
+        return UCS_ERR_INVALID_PARAM;
+    }
 
+    /* Import shared memory */
 
-/*    uct_rocm_trace_data(remote_addr, (uintptr_t)key, "%s [length %zu]",
-                        put ? "PUT_ZCOPY":"GET_ZCOPY",
-                        length);
-                        */
+    ucs_assert(remote_addr == key->address);
+    void *shared_ptr_local = NULL;
+    hsa_status_t  status = uct_rocm_ipc_memory_attach(&key->ipc_handle,
+                                                      key->length,
+                                                      &shared_ptr_local);
+
+    if (status != HSA_STATUS_SUCCESS) {
+        ucs_error("Failed to import shared memory. Status: 0x%x", status);
+        return UCS_ERR_INVALID_ADDR;
+    }
+
+    void     *local_base    = iov[0].buffer;
+    size_t    length        = ucs_min(uct_iov_get_length(iov), key->length);
+
+    void     *remote_base   = shared_ptr_local;
+
+    ucs_trace("uct_rocm_zcopy: local_base[0] 0x%x remote_base[0] 0x%x",
+                            *(int *)local_base, *(int *)remote_base);
+
+    ssize_t copied;
+
+     /* if put == 0 then, READ from the remote region into local one
+      * if put == 1 then, WRITE to the remote region from local one
+      */
+
+    if (!put)
+        copied = uct_rocm_copy_memory(local_base,  remote_base, length);
+    else
+        copied = uct_rocm_copy_memory(remote_base, local_base, length);
+
+    if (copied < 0) {
+        ucs_error("Delivered %zu instead of %zu", copied, length);
+        uct_rocm_ipc_memory_detach(shared_ptr_local);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    ucs_trace("uct_rocm_copy: Copied %d", (int) copied);
+    ucs_trace("uct_rocm_zcopy: local_base[0] 0x%x remote_base[0] 0x%x",
+                            *(int *)local_base, *(int *)remote_base);
+
+    uct_rocm_ipc_memory_detach(shared_ptr_local);
     return UCS_OK;
 }
 

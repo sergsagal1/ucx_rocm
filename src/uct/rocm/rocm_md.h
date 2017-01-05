@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Advanced Micro Devices, Inc.
+ * Copyright 2016-2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -28,25 +28,32 @@
 #include <ucs/type/status.h>
 #include <uct/base/uct_md.h>
 
+
+
+#include <hsa.h>
+#include <hsa_ext_amd.h>
+
+/** Define name of memory domain for GPU memory */
 #define UCT_ROCM_MD_NAME           "rocm_gpu"
 
 extern uct_md_component_t uct_rocm_md_component;
 
 /**
- * @brief ROCM MD descriptor
+ * @brief ROCm MD descriptor
  */
 typedef struct uct_rocm_md {
     struct uct_md super;  /**< Domain info */
-    // rocm specific data should be here.
+
+    /* rocm specific data should be here if any. */
 } uct_rocm_md_t;
 
 /**
- * @brief ROCM packed and remote key
+ * @brief ROCm packed and remote key
  */
 typedef struct uct_rocm_key {
-    char  ipc[8];      /**< IPC Handle */
-    uint64_t  length;  /**< Request length */
-    uintptr_t address; /**< Base addr for the registration */
+    hsa_amd_ipc_memory_t ipc_handle;  /**< IPC Handle */
+    size_t               length;      /**< Size of memory */
+    uintptr_t            address;     /**< Local address of memory */
 } uct_rocm_key_t;
 
 #endif

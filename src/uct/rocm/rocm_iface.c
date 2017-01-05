@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Advanced Micro Devices, Inc.
+ * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,10 +24,12 @@
 #include "rocm_md.h"
 #include "rocm_ep.h"
 
+
 #include <uct/base/uct_md.h>
 
 // Note: Treat ROCM memory as the special case of shared memory.
 #include <uct/sm/base/sm_iface.h>
+
 
 UCT_MD_REGISTER_TL(&uct_rocm_md_component, &uct_rocm_tl);
 
@@ -38,6 +40,7 @@ static ucs_status_t uct_rocm_iface_query(uct_iface_h tl_iface,
     ucs_trace("uct_rocm_iface_query");
 
     /* default values for all shared memory transports */
+
     iface_attr->cap.put.max_zcopy      = SIZE_MAX;
     iface_attr->cap.put.max_iov        = uct_rocm_iface_get_max_iov();
 
@@ -54,6 +57,13 @@ static ucs_status_t uct_rocm_iface_query(uct_iface_h tl_iface,
                                          UCT_IFACE_FLAG_PUT_ZCOPY |
                                          UCT_IFACE_FLAG_CONNECT_TO_IFACE;
 
+    /**
+     * @todo: Add logic to query ROCr about latency information.
+     *
+     * Question: How to handle/choose the correct one in the multi-GPUs case
+     *           when latency could depends on source and target location?
+     *
+     */
     iface_attr->latency                = 80e-9; /* 80 ns */
     iface_attr->bandwidth              = 6911 * 1024.0 * 1024.0;
     iface_attr->overhead               = 50e-6; /* 50 us */
@@ -86,6 +96,7 @@ static UCS_CLASS_INIT_FUNC(uct_rocm_iface_t, uct_md_h md, uct_worker_h worker,
                               tl_config UCS_STATS_ARG(NULL));
     self->rocm_md = (uct_rocm_md_t *)md;
 
+
     return UCS_OK;
 }
 
@@ -107,13 +118,11 @@ static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
                                                 uct_tl_resource_desc_t **resource_p,
                                                 unsigned *num_resources_p)
 {
-    // Note / TODO / TBD:
-    // Should we report several devices or we should treate everything as
-    // the single entity? Right now treat everything as the single entity due to
-    // complexity how to choose device to copy:
-    // - we could have src. and destination on different GPU, etc.
-    // - HSA RT could internally "adjust"" agent for copy operation;
-    // - etc.
+
+    /** @note Report the single device due to the complexity to deal with
+     *        numerous agents (including GPUs cases) especially for
+     *        p2p transfer cases.
+     */
 
     uct_tl_resource_desc_t *resource;
 
@@ -128,8 +137,7 @@ static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
     ucs_snprintf_zero(resource->dev_name, sizeof(resource->dev_name), "%s",
                       md->component->name);
 
-    // Specify device type as "accelerator" device
-    // resource->dev_type = UCT_DEVICE_TYPE_SHM;
+    /* Specify device type as "accelerator" device.*/
     resource->dev_type = UCT_DEVICE_TYPE_ACC;
 
     *num_resources_p = 1;
@@ -138,6 +146,10 @@ static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
     return UCS_OK;
 }
 
+/**
+ * Specify special environment variables to tune ROCm transport.
+ * So far none but keep for future.
+ */
 static ucs_config_field_t uct_rocm_iface_config_table[] = {
 
     {"", "", NULL,

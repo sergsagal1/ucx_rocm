@@ -107,6 +107,9 @@ static ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf,
 
     /* TODO use params->alignment  */
 
+    flags = (params->flags & UCX_PERF_TEST_FLAG_MAP_NONBLOCK) ?
+                    UCT_MD_MEM_FLAG_NONBLOCK : 0;
+
 #if HAVE_ROCM
     if (params->use_rocm) {
         status = rocm_init(params);
@@ -114,31 +117,84 @@ static ucs_status_t uct_perf_test_alloc_mem(ucx_perf_context_t *perf,
         if (status != UCS_OK)
             goto err;
 
-    perf->send_buffer = rocm_allocate_transfer_buffer(params, buffer_size);
+        uct_md_attr_t md_attr;
 
-    if (NULL == perf->send_buffer) {
-        status = UCS_ERR_NO_MEMORY;
-        goto err;
-    }
+        status = uct_md_query(perf->uct.md, &md_attr);
 
-    perf->recv_buffer =  rocm_allocate_transfer_buffer(params, buffer_size);
+        if (status != UCS_OK) {
+            goto err;
+        }
 
-    if (NULL == perf->recv_buffer) {
-        status = UCS_ERR_NO_MEMORY;
-        rocm_free_transfer_buffer(perf->send_buffer);
-        goto err;
-    }
+        if (!(md_attr.cap.flags & UCT_MD_FLAG_REG)) {
+            ucs_error("ROCm md does not support registration");
+            status = UCS_ERR_NO_MEMORY;
+            goto err;
+        }
 
-    perf->offset = 0;
+        perf->uct.send_mem.method = UCT_ALLOC_METHOD_LAST;
+        perf->uct.recv_mem.method = UCT_ALLOC_METHOD_LAST;
 
-    return UCS_OK;
+        perf->send_buffer = rocm_allocate_transfer_buffer(params, buffer_size);
+
+        if (NULL == perf->send_buffer) {
+            status = UCS_ERR_NO_MEMORY;
+            goto err;
+        }
+
+        /* Register allocated send buffer memory  */
+        status = uct_md_mem_reg(perf->uct.md, perf->send_buffer,
+                                buffer_size,
+                                flags, &perf->uct.send_mem.memh);
+
+        if (status != UCS_OK) {
+            rocm_free_transfer_buffer(perf->send_buffer);
+            goto err;
+        }
+
+        perf->recv_buffer =  rocm_allocate_transfer_buffer(params, buffer_size);
+
+        if (NULL == perf->recv_buffer) {
+            status = UCS_ERR_NO_MEMORY;
+            uct_md_mem_dereg(perf->uct.md, perf->uct.send_mem.memh);
+            rocm_free_transfer_buffer(perf->send_buffer);
+            goto err;
+        }
+
+        /* Register allocated receiver buffer memory */
+        status = uct_md_mem_reg(perf->uct.md, perf->recv_buffer,
+                                buffer_size,
+                                flags, &perf->uct.recv_mem.memh);
+
+        if (status != UCS_OK) {
+            uct_md_mem_dereg(perf->uct.md, perf->uct.send_mem.memh);
+            rocm_free_transfer_buffer(perf->send_buffer);
+            rocm_free_transfer_buffer(perf->recv_buffer);
+            goto err;
+        }
+
+        /* Allocate IOV datatype memory */
+        perf->params.msg_size_cnt = params->msg_size_cnt;
+        perf->uct.iov             = malloc(sizeof(*perf->uct.iov) *
+                                       perf->params.msg_size_cnt *
+                                       params->thread_count);
+        if (NULL == perf->uct.iov) {
+            status = UCS_ERR_NO_MEMORY;
+            ucs_error("Failed allocate send IOV(%lu) buffer: %s",
+                      perf->params.msg_size_cnt, ucs_status_string(status));
+
+            uct_md_mem_dereg(perf->uct.md, perf->uct.send_mem.memh);
+            uct_md_mem_dereg(perf->uct.md, perf->uct.recv_mem.memh);
+            rocm_free_transfer_buffer(perf->send_buffer);
+            rocm_free_transfer_buffer(perf->recv_buffer);
+            goto err;
+        }
+
+        perf->offset = 0;
+
+        return UCS_OK;
     }
 #endif
 
-    /* TODO use params->alignment  */
-
-    flags = (params->flags & UCX_PERF_TEST_FLAG_MAP_NONBLOCK) ?
-                    UCT_MD_MEM_FLAG_NONBLOCK : 0;
 
     /* Allocate send buffer memory */
     status = uct_iface_mem_alloc(perf->uct.iface,

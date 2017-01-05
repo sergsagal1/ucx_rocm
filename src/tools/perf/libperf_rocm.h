@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
+ * Copyright 2016 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,34 +20,27 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef LIBPERF_ROCM_H
+#define LIBPERF_ROCM_H
 
-#ifndef ROCM_IFACE_H
-#define ROCM_IFACE_H
+#if HAVE_ROCM
 
-#include <uct/base/uct_iface.h>
+#include <ucs/sys/compiler.h>
 
-#include "rocm_md.h"
-
-/** Define name of transport used for memory operation */
-#define UCT_ROCM_TL_NAME    "rocm_ipc"
+BEGIN_C_DECLS
 
 
-typedef struct uct_rocm_iface {
-    uct_base_iface_t        super;
-    uct_rocm_md_t          *rocm_md;
-} uct_rocm_iface_t;
+ucs_status_t rocm_init(ucx_perf_params_t *params);
+void rocm_shutdown();
+
+void *rocm_allocate_transfer_buffer(ucx_perf_params_t *params, size_t buffer_size);
+void  rocm_free_transfer_buffer(void *p);
 
 
-typedef struct uct_rocm_iface_config {
-    uct_iface_config_t      super;
-} uct_rocm_iface_config_t;
+END_C_DECLS
 
-extern uct_tl_component_t uct_rocm_tl;
+#endif /*  HAVE_ROCM */
 
-static UCS_F_ALWAYS_INLINE
-size_t uct_rocm_iface_get_max_iov()
-{
-    return 1;
-}
 
-#endif
+#endif /* LIBPERF_ROCM_H*/
+

@@ -196,12 +196,14 @@ if HAVE_ROCM
 noinst_HEADERS += \
     rocm/rocm_md.h \
     rocm/rocm_iface.h \
-    rocm/rocm_ep.h
+    rocm/rocm_ep.h \
+    rocm/rocm_common.h	
 
 libuct_la_SOURCES += \
     rocm/rocm_md.c \
     rocm/rocm_iface.c \
-    rocm/rocm_ep.c
+    rocm/rocm_ep.c \
+    rocm/rocm_common.c
 endif
 
 
