@@ -64,7 +64,8 @@ static ucs_status_t uct_rocm_iface_query(uct_iface_h tl_iface,
      *           when latency could depends on source and target location?
      *
      */
-    iface_attr->latency                = 80e-9; /* 80 ns */
+    iface_attr->latency.overhead        = 80e-9; /* 80 ns */
+    iface_attr->latency.growth          = 0;
     iface_attr->bandwidth              = 6911 * 1024.0 * 1024.0;
     iface_attr->overhead               = 50e-6; /* 50 us */
 
