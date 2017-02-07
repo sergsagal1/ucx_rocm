@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
+ * Copyright 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,7 +20,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "rocm_ipc_md.h"
+#include "rocm_cma_md.h"
 
 #include <ucs/debug/log.h>
 #include <ucs/sys/sys.h>
@@ -29,11 +29,24 @@
 #include <uct/rocm/base/rocm_common.h>
 
 
-static ucs_status_t uct_rocm_ipc_md_query(uct_md_h md, uct_md_attr_t *md_attr)
-{
-    ucs_trace("uct_rocm_ipc_md_query");
+static ucs_config_field_t uct_rocm_cma_md_config_table[] = {
+  {"", "", NULL,
+   ucs_offsetof(uct_rocm_cma_md_config_t, super), UCS_CONFIG_TYPE_TABLE(uct_md_config_table)},
 
-    md_attr->rkey_packed_size  = sizeof(uct_rocm_ipc_key_t);
+
+  {"ANY_MEM", "y",
+   "Whether or not to use ROCm CMA support to deal with any memory\n"
+   "Default: Use ROCm CMA for any memory including system one",
+   ucs_offsetof(uct_rocm_cma_md_config_t, any_memory), UCS_CONFIG_TYPE_BOOL},
+
+  {NULL}
+};
+
+static ucs_status_t uct_rocm_cma_md_query(uct_md_h md, uct_md_attr_t *md_attr)
+{
+    ucs_trace("uct_rocm_cma_md_query");
+
+    md_attr->rkey_packed_size  = sizeof(uct_rocm_cma_key_t);
     md_attr->cap.flags         = UCT_MD_FLAG_REG;
     md_attr->cap.max_alloc     = 0;
     md_attr->cap.max_reg       = ULONG_MAX;
@@ -46,10 +59,10 @@ static ucs_status_t uct_rocm_ipc_md_query(uct_md_h md, uct_md_attr_t *md_attr)
     return UCS_OK;
 }
 
-static ucs_status_t uct_rocm_ipc_query_md_resources(uct_md_resource_desc_t **resources_p,
+static ucs_status_t uct_rocm_cma_query_md_resources(uct_md_resource_desc_t **resources_p,
                                                 unsigned *num_resources_p)
 {
-    ucs_trace("uct_rocm_ipc_query_md_resources");
+    ucs_trace("uct_rocm_cma_query_md_resources");
 
     ucs_status_t status;
 
@@ -61,7 +74,7 @@ static ucs_status_t uct_rocm_ipc_query_md_resources(uct_md_resource_desc_t **res
         return UCS_ERR_NO_DEVICE;
     }
 
-    status = uct_single_md_resource(&uct_rocm_ipc_md_component, resources_p,
+    status = uct_single_md_resource(&uct_rocm_cma_md_component, resources_p,
                                   num_resources_p);
 
 
@@ -70,21 +83,19 @@ static ucs_status_t uct_rocm_ipc_query_md_resources(uct_md_resource_desc_t **res
     return status;
 }
 
-static void uct_rocm_ipc_md_close(uct_md_h md)
+static void uct_rocm_cma_md_close(uct_md_h md)
 {
-    uct_rocm_ipc_md_t *rocm_md = (uct_rocm_ipc_md_t *)md;
+    uct_rocm_cma_md_t *rocm_md = (uct_rocm_cma_md_t *)md;
 
     ucs_free(rocm_md);
 }
 
-static ucs_status_t uct_rocm_ipc_mem_reg(uct_md_h md, void *address, size_t length,
+static ucs_status_t uct_rocm_cma_mem_reg(uct_md_h md, void *address, size_t length,
                                      unsigned flags, uct_mem_h *memh_p)
 {
-    hsa_status_t  status;
-    hsa_amd_ipc_memory_t ipc_handle;
-    uct_rocm_ipc_key_t *key;
+    uct_rocm_cma_key_t *key;
 
-    ucs_trace("uct_rocm_ipc_mem_reg: address 0x%p size 0x%lx memh %p (%p)",
+    ucs_trace("uct_rocm_cma_mem_reg: address 0x%p size 0x%lx memh %p (%p)",
               address, length, memh_p, *memh_p);
 
     if (!uct_rocm_is_ptr_gpu_accessible(address)) {
@@ -92,24 +103,13 @@ static ucs_status_t uct_rocm_ipc_mem_reg(uct_md_h md, void *address, size_t leng
         return UCS_ERR_INVALID_ADDR;
     }
 
-    key = ucs_malloc(sizeof(uct_rocm_ipc_key_t), "uct_rocm_ipc_key_t");
+    key = ucs_malloc(sizeof(uct_rocm_cma_key_t), "uct_rocm_cma_key_t");
     if (NULL == key) {
-        ucs_error("Failed to allocate memory for uct_rocm_ipc_key_t");
+        ucs_error("Failed to allocate memory for uct_rocm_cma_key_t");
         return UCS_ERR_NO_MEMORY;
     }
-    ucs_trace("uct_rocm_ipc_mem_reg: allocated key %p", key);
+    ucs_trace("uct_rocm_cma_mem_reg: allocated key %p", key);
 
-    /* Register memory for sharing */
-    status = hsa_amd_ipc_memory_create(address, length, &ipc_handle);
-
-    if (HSA_STATUS_SUCCESS != status) {
-        ucs_error("HSA IPC failed to create  IPC handle for 0x%p: 0x%x",
-                address, status);
-        ucs_free(key);
-        return UCS_ERR_IO_ERROR;
-    }
-
-    key->ipc_handle = ipc_handle;
     key->length     = length;
     key->address    = (uintptr_t) address;
 
@@ -120,10 +120,10 @@ static ucs_status_t uct_rocm_ipc_mem_reg(uct_md_h md, void *address, size_t leng
     return UCS_OK;
 }
 
-static ucs_status_t uct_rocm_ipc_mem_dereg(uct_md_h md, uct_mem_h memh)
+static ucs_status_t uct_rocm_cma_mem_dereg(uct_md_h md, uct_mem_h memh)
 {
-    uct_rocm_ipc_key_t *key = (uct_rocm_ipc_key_t *)memh;
-    ucs_trace("uct_rocm_ipc_mem_dereg: key  %p", key);
+    uct_rocm_cma_key_t *key = (uct_rocm_cma_key_t *)memh;
+    ucs_trace("uct_rocm_cma_mem_dereg: key  %p", key);
 
     /* We should do nothing. If memory was shared then it will be
      * shared till all processes "free" such memory.
@@ -133,12 +133,11 @@ static ucs_status_t uct_rocm_ipc_mem_dereg(uct_md_h md, uct_mem_h memh)
     return UCS_OK;
 }
 
-static ucs_status_t uct_rocm_ipc_rkey_pack(uct_md_h md, uct_mem_h memh,
+static ucs_status_t uct_rocm_cma_rkey_pack(uct_md_h md, uct_mem_h memh,
                                        void *rkey_buffer)
 {
-    uct_rocm_ipc_key_t *packed = (uct_rocm_ipc_key_t *)rkey_buffer;
-    uct_rocm_ipc_key_t *key    = (uct_rocm_ipc_key_t *)memh;
-    packed->ipc_handle  = key->ipc_handle;
+    uct_rocm_cma_key_t *packed = (uct_rocm_cma_key_t *)rkey_buffer;
+    uct_rocm_cma_key_t *key    = (uct_rocm_cma_key_t *)memh;
     packed->length      = key->length;
     packed->address     = key->address;
 
@@ -147,19 +146,18 @@ static ucs_status_t uct_rocm_ipc_rkey_pack(uct_md_h md, uct_mem_h memh,
 
     return UCS_OK;
 }
-static ucs_status_t uct_rocm_ipc_rkey_unpack(uct_md_component_t *mdc,
+static ucs_status_t uct_rocm_cma_rkey_unpack(uct_md_component_t *mdc,
                                          const void *rkey_buffer, uct_rkey_t *rkey_p,
                                          void **handle_p)
 {
-    uct_rocm_ipc_key_t *packed = (uct_rocm_ipc_key_t *)rkey_buffer;
-    uct_rocm_ipc_key_t *key;
+    uct_rocm_cma_key_t *packed = (uct_rocm_cma_key_t *)rkey_buffer;
+    uct_rocm_cma_key_t *key;
 
-    key = ucs_malloc(sizeof(uct_rocm_ipc_key_t), "uct_rocm_ipc_key_t");
+    key = ucs_malloc(sizeof(uct_rocm_cma_key_t), "uct_rocm_cma_key_t");
     if (NULL == key) {
-        ucs_error("Failed to allocate memory for uct_rocm_ipc_key_t");
+        ucs_error("Failed to allocate memory for uct_rocm_cma_key_t");
         return UCS_ERR_NO_MEMORY;
     }
-    key->ipc_handle  = packed->ipc_handle;
     key->length      = packed->length;
     key->address     = packed->address;
 
@@ -169,52 +167,53 @@ static ucs_status_t uct_rocm_ipc_rkey_unpack(uct_md_component_t *mdc,
               key, (int) key->length, key->address);
     return UCS_OK;
 }
-static ucs_status_t uct_rocm_ipc_rkey_release(uct_md_component_t *mdc, uct_rkey_t rkey,
+static ucs_status_t uct_rocm_cma_rkey_release(uct_md_component_t *mdc, uct_rkey_t rkey,
                                           void *handle)
 {
     ucs_assert(NULL == handle);
-    ucs_trace("uct_rocm_ipc_rkey_release: key %p", (void *)rkey);
+    ucs_trace("uct_rocm_cma_rkey_release: key %p", (void *)rkey);
     ucs_free((void *)rkey);
     return UCS_OK;
 }
 
-static ucs_status_t uct_rocm_ipc_md_open(const char *md_name, const uct_md_config_t *md_config,
+static ucs_status_t uct_rocm_cma_md_open(const char *md_name, const uct_md_config_t *uct_md_config,
                                      uct_md_h *md_p)
 {
-    uct_rocm_ipc_md_t *rocm_md;
-
+    uct_rocm_cma_md_t *rocm_md;
+    const uct_rocm_cma_md_config_t *md_config =
+    ucs_derived_of(uct_md_config, uct_rocm_cma_md_config_t);
 
     static uct_md_ops_t md_ops = {
-        .close        = uct_rocm_ipc_md_close,
-        .query        = uct_rocm_ipc_md_query,
-        .mkey_pack    = uct_rocm_ipc_rkey_pack,
-        .mem_reg      = uct_rocm_ipc_mem_reg,
-        .mem_dereg    = uct_rocm_ipc_mem_dereg
+        .close        = uct_rocm_cma_md_close,
+        .query        = uct_rocm_cma_md_query,
+        .mkey_pack    = uct_rocm_cma_rkey_pack,
+        .mem_reg      = uct_rocm_cma_mem_reg,
+        .mem_dereg    = uct_rocm_cma_mem_dereg
     };
 
-    ucs_trace("uct_rocm_ipc_md_open");
+    ucs_trace("uct_rocm_cma_md_open(): Any memory = %d\n",
+                                md_config->any_memory);
 
-    rocm_md = ucs_malloc(sizeof(uct_rocm_ipc_md_t), "uct_rocm_ipc_md_t");
+    rocm_md = ucs_malloc(sizeof(uct_rocm_cma_md_t), "uct_rocm_cma_md_t");
     if (NULL == rocm_md) {
-        ucs_error("Failed to allocate memory for uct_rocm_ipc_md_t");
+        ucs_error("Failed to allocate memory for uct_rocm_cma_md_t");
         return UCS_ERR_NO_MEMORY;
     }
 
     rocm_md->super.ops = &md_ops;
-    rocm_md->super.component = &uct_rocm_ipc_md_component;
+    rocm_md->super.component = &uct_rocm_cma_md_component;
+    rocm_md->any_memory = md_config->any_memory;
 
     *md_p = (uct_md_h)rocm_md;
 
 
-    ucs_trace("uct_rocm_ipc_md_open - success");
+    ucs_trace("uct_rocm_cma_md_open - success");
     return UCS_OK;
 }
 
-
-UCT_MD_COMPONENT_DEFINE(uct_rocm_ipc_md_component, UCT_ROCM_IPC_MD_NAME,
-                        uct_rocm_ipc_query_md_resources, uct_rocm_ipc_md_open, 0,
-                        uct_rocm_ipc_rkey_unpack,
-                        uct_rocm_ipc_rkey_release, "ROCM_",
-                        uct_md_config_table,
-                        uct_md_config_t);
-
+UCT_MD_COMPONENT_DEFINE(uct_rocm_cma_md_component, UCT_ROCM_CMA_MD_NAME,
+                        uct_rocm_cma_query_md_resources, uct_rocm_cma_md_open, 0,
+                        uct_rocm_cma_rkey_unpack,
+                        uct_rocm_cma_rkey_release, "ROCM_",
+                        uct_rocm_cma_md_config_table,
+                        uct_rocm_cma_md_config_t);

@@ -10,7 +10,7 @@ lib_LTLIBRARIES     = libuct.la
 
 libuct_la_CFLAGS   =
 libuct_la_LIBS     =
-libuct_la_CPPFLAGS = -I$(abs_top_srcdir)/src -I$(abs_top_builddir)/src 
+libuct_la_CPPFLAGS = -I$(abs_top_srcdir)/src -I$(abs_top_builddir)/src
 libuct_la_LDFLAGS  = -ldl -version-info $(SOVERSION)
 libuct_la_LIBADD   = $(LIBM) ../ucs/libucs.la
 libuct_ladir       = $(includedir)/uct
@@ -58,7 +58,7 @@ if HAVE_MLX5_HW
 libuct_la_SOURCES += \
 	ib/mlx5/ib_mlx5_log.c \
 	ib/mlx5/ib_mlx5.c
-	
+
 noinst_HEADERS += \
 	ib/mlx5/ib_mlx5_log.h \
 	ib/mlx5/ib_mlx5.h \
@@ -72,7 +72,7 @@ noinst_HEADERS += \
 	ib/rc/base/rc_ep.h \
 	ib/rc/base/rc_iface.h \
 	ib/rc/verbs/rc_verbs.h \
-	ib/rc/verbs/rc_verbs_common.h 
+	ib/rc/verbs/rc_verbs_common.h
 
 libuct_la_SOURCES += \
 	ib/rc/base/rc_ep.c \
@@ -84,7 +84,7 @@ libuct_la_SOURCES += \
 if HAVE_MLX5_HW
 noinst_HEADERS += \
 	ib/rc/accel/rc_mlx5.h \
-	ib/rc/accel/rc_mlx5_common.h 
+	ib/rc/accel/rc_mlx5_common.h
 
 libuct_la_SOURCES += \
 	ib/rc/accel/rc_mlx5_ep.c \
@@ -97,7 +97,7 @@ if HAVE_TL_DC
 noinst_HEADERS += \
 	ib/dc/base/dc_iface.h \
 	ib/dc/base/dc_ep.h \
-	ib/dc/verbs/dc_verbs.h 
+	ib/dc/verbs/dc_verbs.h
 
 libuct_la_SOURCES += \
 	ib/dc/base/dc_iface.c \
@@ -112,7 +112,7 @@ libuct_la_SOURCES += \
 	ib/dc/accel/dc_mlx5.c
 endif
 endif
-				  
+
 if HAVE_TL_UD
 libuct_la_SOURCES += \
 	ib/ud/base/ud_iface.c \
@@ -125,7 +125,7 @@ noinst_HEADERS += \
 	ib/ud/base/ud_ep.h \
 	ib/ud/base/ud_def.h \
 	ib/ud/base/ud_inl.h \
-	ib/ud/verbs/ud_verbs.h 
+	ib/ud/verbs/ud_verbs.h
 
 if HAVE_MLX5_HW
 noinst_HEADERS += \
@@ -134,7 +134,7 @@ noinst_HEADERS += \
 
 libuct_la_SOURCES += \
 	ib/ud/accel/ud_mlx5_common.c \
-	ib/ud/accel/ud_mlx5.c 
+	ib/ud/accel/ud_mlx5.c
 endif
 endif
 
@@ -150,7 +150,7 @@ endif
 
 endif
 
-if HAVE_CRAY_UGNI 
+if HAVE_CRAY_UGNI
 libuct_la_CFLAGS   += $(CRAY_UGNI_CFLAGS)
 libuct_la_LDFLAGS  += $(CRAY_UGNI_LIBS)
 libuct_la_LIBS     += $(CRAY_UGNI_LIBS)
@@ -194,16 +194,22 @@ endif
 
 if HAVE_ROCM
 noinst_HEADERS += \
-    rocm/rocm_md.h \
-    rocm/rocm_iface.h \
-    rocm/rocm_ep.h \
-    rocm/rocm_common.h	
+    rocm/ipc/rocm_ipc_md.h \
+    rocm/ipc/rocm_ipc_iface.h \
+    rocm/ipc/rocm_ipc_ep.h \
+    rocm/cma/rocm_cma_md.h \
+    rocm/cma/rocm_cma_iface.h \
+    rocm/cma/rocm_cma_ep.h \
+    rocm/base/rocm_common.h
 
 libuct_la_SOURCES += \
-    rocm/rocm_md.c \
-    rocm/rocm_iface.c \
-    rocm/rocm_ep.c \
-    rocm/rocm_common.c
+    rocm/ipc/rocm_ipc_md.c \
+    rocm/ipc/rocm_ipc_iface.c \
+    rocm/ipc/rocm_ipc_ep.c \
+    rocm/cma/rocm_cma_md.c \
+    rocm/cma/rocm_cma_iface.c \
+    rocm/cma/rocm_cma_ep.c \
+    rocm/base/rocm_common.c
 endif
 
 
@@ -247,7 +253,7 @@ libuct_la_SOURCES += \
 	sm/cma/cma_md.c
 endif
 
-# Inria's KNEM 
+# Inria's KNEM
 if HAVE_KNEM
 noinst_HEADERS += \
 	sm/knem/knem_iface.h \

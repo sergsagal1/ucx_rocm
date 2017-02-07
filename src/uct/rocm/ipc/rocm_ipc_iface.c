@@ -20,32 +20,32 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "rocm_iface.h"
-#include "rocm_md.h"
-#include "rocm_ep.h"
+#include "rocm_ipc_iface.h"
+#include "rocm_ipc_md.h"
+#include "rocm_ipc_ep.h"
 
 
 #include <uct/base/uct_md.h>
 
-// Note: Treat ROCM memory as the special case of shared memory.
+/* @note: Treat ROCM memory as the special case of shared memory. */
 #include <uct/sm/base/sm_iface.h>
 
 
-UCT_MD_REGISTER_TL(&uct_rocm_md_component, &uct_rocm_tl);
+UCT_MD_REGISTER_TL(&uct_rocm_ipc_md_component, &uct_rocm_ipc_tl);
 
-static ucs_status_t uct_rocm_iface_query(uct_iface_h tl_iface,
+static ucs_status_t uct_rocm_ipc_iface_query(uct_iface_h tl_iface,
                                          uct_iface_attr_t *iface_attr)
 {
     memset(iface_attr, 0, sizeof(uct_iface_attr_t));
-    ucs_trace("uct_rocm_iface_query");
+    ucs_trace("uct_rocm_ipc_iface_query");
 
     /* default values for all shared memory transports */
 
     iface_attr->cap.put.max_zcopy      = SIZE_MAX;
-    iface_attr->cap.put.max_iov        = uct_rocm_iface_get_max_iov();
+    iface_attr->cap.put.max_iov        = uct_rocm_ipc_iface_get_max_iov();
 
     iface_attr->cap.get.max_zcopy      = SIZE_MAX;
-    iface_attr->cap.get.max_iov        = uct_rocm_iface_get_max_iov();
+    iface_attr->cap.get.max_iov        = uct_rocm_ipc_iface_get_max_iov();
 
     iface_attr->cap.am.max_iov         = 1;
 
@@ -72,50 +72,50 @@ static ucs_status_t uct_rocm_iface_query(uct_iface_h tl_iface,
     return UCS_OK;
 }
 
-static UCS_CLASS_DECLARE_DELETE_FUNC(uct_rocm_iface_t, uct_iface_t);
+static UCS_CLASS_DECLARE_DELETE_FUNC(uct_rocm_ipc_iface_t, uct_iface_t);
 
-static uct_iface_ops_t uct_rocm_iface_ops = {
-    .iface_close         = UCS_CLASS_DELETE_FUNC_NAME(uct_rocm_iface_t),
-    .iface_query         = uct_rocm_iface_query,
+static uct_iface_ops_t uct_rocm_ipc_iface_ops = {
+    .iface_close         = UCS_CLASS_DELETE_FUNC_NAME(uct_rocm_ipc_iface_t),
+    .iface_query         = uct_rocm_ipc_iface_query,
     .iface_get_address   = (void*)ucs_empty_function_return_success,
     .iface_get_device_address = uct_sm_iface_get_device_address,
     .iface_is_reachable  = uct_sm_iface_is_reachable,
     .iface_fence         = uct_sm_iface_fence,
-    .ep_put_zcopy        = uct_rocm_ep_put_zcopy,
-    .ep_get_zcopy        = uct_rocm_ep_get_zcopy,
+    .ep_put_zcopy        = uct_rocm_ipc_ep_put_zcopy,
+    .ep_get_zcopy        = uct_rocm_ipc_ep_get_zcopy,
     .ep_fence            = uct_sm_ep_fence,
-    .ep_create_connected = UCS_CLASS_NEW_FUNC_NAME(uct_rocm_ep_t),
-    .ep_destroy          = UCS_CLASS_DELETE_FUNC_NAME(uct_rocm_ep_t),
+    .ep_create_connected = UCS_CLASS_NEW_FUNC_NAME(uct_rocm_ipc_ep_t),
+    .ep_destroy          = UCS_CLASS_DELETE_FUNC_NAME(uct_rocm_ipc_ep_t),
 };
 
 
-static UCS_CLASS_INIT_FUNC(uct_rocm_iface_t, uct_md_h md, uct_worker_h worker,
+static UCS_CLASS_INIT_FUNC(uct_rocm_ipc_iface_t, uct_md_h md, uct_worker_h worker,
                            const uct_iface_params_t *params,
                            const uct_iface_config_t *tl_config)
 {
-    UCS_CLASS_CALL_SUPER_INIT(uct_base_iface_t, &uct_rocm_iface_ops, md, worker,
+    UCS_CLASS_CALL_SUPER_INIT(uct_base_iface_t, &uct_rocm_ipc_iface_ops, md, worker,
                               tl_config UCS_STATS_ARG(NULL));
-    self->rocm_md = (uct_rocm_md_t *)md;
+    self->rocm_md = (uct_rocm_ipc_md_t *)md;
 
 
     return UCS_OK;
 }
 
 
-static UCS_CLASS_CLEANUP_FUNC(uct_rocm_iface_t)
+static UCS_CLASS_CLEANUP_FUNC(uct_rocm_ipc_iface_t)
 {
     /* No OP */
 }
 
-UCS_CLASS_DEFINE(uct_rocm_iface_t, uct_base_iface_t);
+UCS_CLASS_DEFINE(uct_rocm_ipc_iface_t, uct_base_iface_t);
 
-static UCS_CLASS_DEFINE_NEW_FUNC(uct_rocm_iface_t, uct_iface_t, uct_md_h,
+static UCS_CLASS_DEFINE_NEW_FUNC(uct_rocm_ipc_iface_t, uct_iface_t, uct_md_h,
                                  uct_worker_h, const uct_iface_params_t*,
                                  const uct_iface_config_t *);
-static UCS_CLASS_DEFINE_DELETE_FUNC(uct_rocm_iface_t, uct_iface_t);
+static UCS_CLASS_DEFINE_DELETE_FUNC(uct_rocm_ipc_iface_t, uct_iface_t);
 
 
-static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
+static ucs_status_t uct_rocm_ipc_query_tl_resources(uct_md_h md,
                                                 uct_tl_resource_desc_t **resource_p,
                                                 unsigned *num_resources_p)
 {
@@ -134,7 +134,7 @@ static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
     }
 
     ucs_snprintf_zero(resource->tl_name, sizeof(resource->tl_name), "%s",
-                      UCT_ROCM_TL_NAME);
+                      UCT_ROCM_IPC_TL_NAME);
     ucs_snprintf_zero(resource->dev_name, sizeof(resource->dev_name), "%s",
                       md->component->name);
 
@@ -151,20 +151,20 @@ static ucs_status_t uct_rocm_query_tl_resources(uct_md_h md,
  * Specify special environment variables to tune ROCm transport.
  * So far none but keep for future.
  */
-static ucs_config_field_t uct_rocm_iface_config_table[] = {
+static ucs_config_field_t uct_rocm_ipc_iface_config_table[] = {
 
     {"", "", NULL,
-     ucs_offsetof(uct_rocm_iface_config_t, super),
+     ucs_offsetof(uct_rocm_ipc_iface_config_t, super),
      UCS_CONFIG_TYPE_TABLE(uct_iface_config_table)},
 
     {NULL}
 };
 
-UCT_TL_COMPONENT_DEFINE(uct_rocm_tl,
-                        uct_rocm_query_tl_resources,
-                        uct_rocm_iface_t,
-                        UCT_ROCM_TL_NAME,
+UCT_TL_COMPONENT_DEFINE(uct_rocm_ipc_tl,
+                        uct_rocm_ipc_query_tl_resources,
+                        uct_rocm_ipc_iface_t,
+                        UCT_ROCM_IPC_TL_NAME,
                         "ROCM_",
-                        uct_rocm_iface_config_table,
-                        uct_rocm_iface_config_t);
+                        uct_rocm_ipc_iface_config_table,
+                        uct_rocm_ipc_iface_config_t);
 

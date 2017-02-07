@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 Advanced Micro Devices, Inc.
+ * Copyright 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,8 +20,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef ROCM_IPC_MD_H
-#define ROCM_IPC_MD_H
+#ifndef ROCM_CMA_MD_H
+#define ROCM_CMA_MD_H
 
 #include <ucs/config/types.h>
 #include <ucs/debug/memtrack.h>
@@ -34,27 +34,37 @@
 #include <hsa_ext_amd.h>
 
 /** Define name of memory domain for GPU memory. Must not be larget than
-    UCT_MD_COMPONENT_NAME_MAX. */
-#define UCT_ROCM_IPC_MD_NAME   "rocmipc"
+    UCT_MD_COMPONENT_NAME_MAX.
+*/
+#define UCT_ROCM_CMA_MD_NAME   "rocmcma"
 
-extern uct_md_component_t uct_rocm_ipc_md_component;
+extern uct_md_component_t uct_rocm_cma_md_component;
 
 /**
  * @brief ROCm MD descriptor
  */
-typedef struct uct_rocm_ipc_md {
+typedef struct uct_rocm_cma_md {
     struct uct_md super;  /**< Domain info */
 
     /* rocm specific data should be here if any. */
-} uct_rocm_ipc_md_t;
+    int  any_memory; /**< Support any memory */
+} uct_rocm_cma_md_t;
 
 /**
- * @brief ROCm packed and remote key
+ * ROCm  CMA memory domain configuration.
  */
-typedef struct uct_rocm_ipc_key {
-    hsa_amd_ipc_memory_t ipc_handle;  /**< IPC Handle */
+typedef struct uct_rocm_cma_md_config {
+    uct_md_config_t          super;
+    int                      any_memory; /**< Support any memory */
+} uct_rocm_cma_md_config_t;
+
+
+/**
+ * @brief ROCm packed and remote key for CMA
+ */
+typedef struct uct_rocm_cma_key {
     size_t               length;      /**< Size of memory */
     uintptr_t            address;     /**< Local address of memory */
-} uct_rocm_ipc_key_t;
+} uct_rocm_cma_key_t;
 
 #endif

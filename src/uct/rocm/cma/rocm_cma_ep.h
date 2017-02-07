@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
+ * Copyright 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,34 +20,26 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#ifndef ROCM_CMA_EP_H
+#define ROCM_CMA_EP_H
 
-#ifndef ROCM_IPC_IFACE_H
-#define ROCM_IPC_IFACE_H
+#include "rocm_cma_iface.h"
 
-#include <uct/base/uct_iface.h>
+typedef struct uct_rocm_cma_ep {
+    uct_base_ep_t super;
+    pid_t         remote_pid;
+} uct_rocm_cma_ep_t;
 
-#include "rocm_ipc_md.h"
+UCS_CLASS_DECLARE_NEW_FUNC(uct_rocm_cma_ep_t, uct_ep_t, uct_iface_t*,
+                           const uct_device_addr_t *, const uct_iface_addr_t *);
+UCS_CLASS_DECLARE_DELETE_FUNC(uct_rocm_cma_ep_t, uct_ep_t);
 
-/** Define name of transport used for memory operation */
-#define UCT_ROCM_IPC_TL_NAME    "rocmipc"
+ucs_status_t uct_rocm_cma_ep_put_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov, size_t iovcnt,
+                                   uint64_t remote_addr,  uct_rkey_t rkey,
+                                   uct_completion_t *comp);
+ucs_status_t uct_rocm_cma_ep_get_zcopy(uct_ep_h tl_ep,  const uct_iov_t *iov, size_t iovcnt,
+                                   uint64_t remote_addr, uct_rkey_t rkey,
+                                   uct_completion_t *comp);
 
-
-typedef struct uct_rocm_ipc_iface {
-    uct_base_iface_t        super;
-    uct_rocm_ipc_md_t      *rocm_md;
-} uct_rocm_ipc_iface_t;
-
-
-typedef struct uct_rocm_ipc_iface_config {
-    uct_iface_config_t      super;
-} uct_rocm_ipc_iface_config_t;
-
-extern uct_tl_component_t uct_rocm_ipc_tl;
-
-static UCS_F_ALWAYS_INLINE
-size_t uct_rocm_ipc_iface_get_max_iov()
-{
-    return 1;
-}
 
 #endif

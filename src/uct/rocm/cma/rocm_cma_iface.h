@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 - 2017 Advanced Micro Devices, Inc.
+ * Copyright 2017 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,33 +21,30 @@
  */
 
 
-#ifndef ROCM_IPC_IFACE_H
-#define ROCM_IPC_IFACE_H
+#ifndef ROCM_CMA_IFACE_H
+#define ROCM_CMA_IFACE_H
 
 #include <uct/base/uct_iface.h>
 
-#include "rocm_ipc_md.h"
+#include "rocm_cma_md.h"
 
-/** Define name of transport used for memory operation */
-#define UCT_ROCM_IPC_TL_NAME    "rocmipc"
+/** Define name of transport used for memory operation. Must not be larger than
+     UCT_TL_NAME_MAX
+*/
+#define UCT_ROCM_CMA_TL_NAME    "rocmcma"
 
 
-typedef struct uct_rocm_ipc_iface {
+typedef struct uct_rocm_cma_iface {
     uct_base_iface_t        super;
-    uct_rocm_ipc_md_t      *rocm_md;
-} uct_rocm_ipc_iface_t;
+    uct_rocm_cma_md_t      *rocm_md;
+} uct_rocm_cma_iface_t;
 
 
-typedef struct uct_rocm_ipc_iface_config {
+typedef struct uct_rocm_cma_iface_config {
     uct_iface_config_t      super;
-} uct_rocm_ipc_iface_config_t;
+} uct_rocm_cma_iface_config_t;
 
-extern uct_tl_component_t uct_rocm_ipc_tl;
+extern uct_tl_component_t uct_rocm_cma_tl;
 
-static UCS_F_ALWAYS_INLINE
-size_t uct_rocm_ipc_iface_get_max_iov()
-{
-    return 1;
-}
 
 #endif

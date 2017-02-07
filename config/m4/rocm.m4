@@ -17,8 +17,8 @@ AS_IF([test "x$with_rocm" != "xno"],
               [:])
       AC_CHECK_HEADER([$with_rocm/hsa/include/hsa_ext_amd.h],
                        [
-                        AC_SUBST(ROCM_CPPFLAGS, "-I$with_rocm/hsa/include -DHAVE_ROCM=1")
-                        AC_SUBST(ROCM_CFLAGS, "-I$with_rocm/hsa/include  -DHAVE_ROCM=1")
+                        AC_SUBST(ROCM_CPPFLAGS, "-I$with_rocm/hsa/include -I$with_rocm/libhsakmt/include/libhsakmt -DHAVE_ROCM=1")
+                        AC_SUBST(ROCM_CFLAGS, "-I$with_rocm/hsa/include -I$with_rocm/libhsakmt/include/libhsakmt -DHAVE_ROCM=1")
                         AC_SUBST(ROCM_LDFLAGS, "-lhsa-runtime64 -L$with_rocm/hsa/lib")
                         CFLAGS="$CFLAGS $ROCM_CFLAGS"
                         CPPFLAGS="$CPPFLAGS $ROCM_CPPFLAGS"
