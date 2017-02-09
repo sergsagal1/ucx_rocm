@@ -31,6 +31,8 @@
 #include <uct/sm/base/sm_iface.h>
 
 #include <uct/rocm/base/rocm_common.h>
+
+/* Include HSA Thunk header file */
 #include <hsakmt.h>
 
 
@@ -46,7 +48,7 @@ ssize_t process_vm_readv(pid_t pid,
                                 unsigned long riovcnt,
                                 unsigned long flags);
 
-       ssize_t process_vm_writev(pid_t pid,
+ssize_t process_vm_writev(pid_t pid,
                                  const struct iovec *local_iov,
                                  unsigned long liovcnt,
                                  const struct iovec *remote_iov,
@@ -84,7 +86,8 @@ hsaKmtProcessVMRead(
 
     ssize_t ret = process_vm_readv(Pid, local_iov, i, &remote_iov, 1, 0);
 
-    ucs_error("hsaKmtProcessVMRead was called. Return %d\n", (int) ret);
+    ucs_trace("hsaKmtProcessVMRead was called. Return %d\n", (int) ret);
+    *SizeCopied = ret;
 
     return 0;
 }
@@ -105,21 +108,33 @@ hsaKmtProcessVMWrite(
     struct iovec remote_iov;
     size_t i;
 
+   //ucs_error("hsaKmtProcessVMWrite: LocalCount %d", (int) LocalMemoryArrayCount);
+
     for (i = 0; i < LocalMemoryArrayCount; i++) {
         local_iov[i].iov_base = LocalMemoryArray[i].MemoryAddress;
         local_iov[i].iov_len  = LocalMemoryArray[i].SizeInBytes;
+        ucs_trace("hsaKmtProcessVMWrite:: iov_base %p len %d",
+                   (void *)local_iov[i].iov_base, (int) local_iov[i].iov_len);
     }
 
     remote_iov.iov_base = RemoteMemoryArray[0].MemoryAddress;
     remote_iov.iov_len  = RemoteMemoryArray[0].SizeInBytes;
+        ucs_trace("hsaKmtProcessVMWrite:: Remote iov_base %p len %d",
+                   (void *)remote_iov.iov_base, (int) remote_iov.iov_len);
 
-    ssize_t ret = process_vm_readv(Pid, local_iov, i, &remote_iov, 1, 0);
+    ucs_trace("Copy: Remote pid: 0%x", Pid);
+    ssize_t ret = process_vm_writev(Pid, local_iov,
+                                   LocalMemoryArrayCount,
+                                   &remote_iov, 1, 0);
 
-    ucs_error("hsaKmtProcessVMWrite was called. Return %d\n", (int) ret);
+
+    ucs_trace("hsaKmtProcessVMWrite was called. Return %d\n", (int) ret);
+    *SizeCopied = ret;
 
     return 0;
 }
 
+/* ^^^^^^^^^^^^^^^^^^^ END OF TEMPORALLY CODE */
 
 static UCS_CLASS_INIT_FUNC(uct_rocm_cma_ep_t, uct_iface_t *tl_iface,
                            const uct_device_addr_t *dev_addr,
@@ -178,6 +193,9 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
     HsaMemoryRange remote_iov;
     uct_rocm_cma_ep_t *ep = ucs_derived_of(tl_ep, uct_rocm_cma_ep_t);
 
+    ucs_trace("uct_rocm_cma_ep_common_zcopy (%s): remote_addr: %p (gpu %p)",
+                fn_name, (void *)remote_addr, (void*)key->address);
+
     do {
         iov_it_length = 0;
         local_iov_it = 0;
@@ -216,7 +234,12 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
             return UCS_OK;          /* Nothing to deliver */
         }
 
+        ucs_trace("Remote GPU Address %p, Remote Address %p",
+                            (void *)key->address, (void *)remote_addr);
+        /* Till Thunk finish support: use CPU address for testing */
+        // remote_iov.MemoryAddress = (void *)(key->address + delivered);
         remote_iov.MemoryAddress = (void *)(remote_addr + delivered);
+
         remote_iov.SizeInBytes   = length - delivered;
 
         HSAKMT_STATUS status = fn_p(ep->remote_pid,
@@ -225,8 +248,8 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
                                     &SizeCopied);
 
         if (status  != HSAKMT_STATUS_SUCCESS) {
-            ucs_error("%s delivered %zu instead of %zu, Status  %d",
-                      fn_name, (ssize_t) delivered, (ssize_t) length,
+            ucs_error("%s  copied  %zu instead of %zu, Status  %d",
+                      fn_name, (ssize_t) SizeCopied, (ssize_t) length,
                       status);
             return UCS_ERR_IO_ERROR;
         }
@@ -285,5 +308,6 @@ ucs_status_t uct_rocm_cma_ep_get_zcopy(uct_ep_h tl_ep, const uct_iov_t *iov, siz
                        uct_iov_total_length(iov, iovcnt));
 
     ucs_trace("uct_rocm_cma_ep_get_zcopy(). Status: 0x%x", ret);
+
     return ret;
 }

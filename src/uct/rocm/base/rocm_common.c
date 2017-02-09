@@ -382,7 +382,7 @@ end:
     return status;
 }
 
-bool uct_rocm_is_ptr_gpu_accessible(void *ptr)
+bool uct_rocm_is_ptr_gpu_accessible(void *ptr, void **gpu_ptr)
 {
     hsa_amd_pointer_info_t info;
     info.size = sizeof(hsa_amd_pointer_info_t);
@@ -392,7 +392,14 @@ bool uct_rocm_is_ptr_gpu_accessible(void *ptr)
 
     if (status == HSA_STATUS_SUCCESS) {
         if (info.type != HSA_EXT_POINTER_TYPE_UNKNOWN) {
-            ucs_trace("Address %p is GPU accessible", ptr);
+
+            if (gpu_ptr) {
+                *gpu_ptr = info.hostBaseAddress;
+            }
+
+            ucs_trace("Address %p is GPU accessible *(Host addr %p)",
+                       ptr, info.hostBaseAddress);
+
             return true;
         }
     }
@@ -551,4 +558,21 @@ void uct_rocm_ipc_memory_detach(void *ptr)
         ucs_error("hsa_amd_ipc_memory_detach failure. Ptr 0x%p. Status 0x%x",
                 ptr, status);
    }
+}
+
+hsa_status_t uct_rocm_memory_lock(void *ptr, size_t size, void **gpu_ptr)
+{
+    /* We need to lock / register memory on all GPUs because we do not know
+       the location of other memory */
+    hsa_status_t status = hsa_amd_memory_lock(ptr, size,
+                                             uct_rocm_cfg.agents.gpu_agent,
+                                             uct_rocm_cfg.num_of_gpu,
+                                             gpu_ptr
+                                             );
+
+    if (status != HSA_STATUS_SUCCESS) {
+        ucs_error("Failed to lock memory (%p): 0x%x\n", ptr, status);
+    }
+
+    return status;
 }

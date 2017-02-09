@@ -44,18 +44,22 @@ extern uct_md_component_t uct_rocm_cma_md_component;
  * @brief ROCm MD descriptor
  */
 typedef struct uct_rocm_cma_md {
-    struct uct_md super;  /**< Domain info */
+    struct  uct_md super;  /**< Domain info */
 
     /* rocm specific data should be here if any. */
-    int  any_memory; /**< Support any memory */
+    int     any_memory;     /**< Support any memory */
+    int     acc_dev;        /**< Flag if we want to register device as
+                                 acceleration device */
 } uct_rocm_cma_md_t;
 
 /**
  * ROCm  CMA memory domain configuration.
  */
 typedef struct uct_rocm_cma_md_config {
-    uct_md_config_t          super;
-    int                      any_memory; /**< Support any memory */
+    uct_md_config_t super;
+    int             any_memory; /**< Support any memory */
+    int             acc_dev;    /**< Flag if we want to register device as
+                                     acceleration device */
 } uct_rocm_cma_md_config_t;
 
 

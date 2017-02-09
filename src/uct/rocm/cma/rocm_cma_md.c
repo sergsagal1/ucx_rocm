@@ -39,6 +39,12 @@ static ucs_config_field_t uct_rocm_cma_md_config_table[] = {
    "Default: Use ROCm CMA for any memory including system one",
    ucs_offsetof(uct_rocm_cma_md_config_t, any_memory), UCS_CONFIG_TYPE_BOOL},
 
+  {"DEV_ACC", "n",
+   "Specify if register device type as UCT_DEVICE_TYPE_ACC\n"
+   "(acceleration device).\n"
+   " By default register as UCT_DEVICE_TYPE_SHM - shared memory device",
+   ucs_offsetof(uct_rocm_cma_md_config_t, acc_dev), UCS_CONFIG_TYPE_BOOL},
+
   {NULL}
 };
 
@@ -47,7 +53,8 @@ static ucs_status_t uct_rocm_cma_md_query(uct_md_h md, uct_md_attr_t *md_attr)
     ucs_trace("uct_rocm_cma_md_query");
 
     md_attr->rkey_packed_size  = sizeof(uct_rocm_cma_key_t);
-    md_attr->cap.flags         = UCT_MD_FLAG_REG;
+    md_attr->cap.flags         = UCT_MD_FLAG_REG |
+                                 UCT_MD_FLAG_NEED_RKEY;
     md_attr->cap.max_alloc     = 0;
     md_attr->cap.max_reg       = ULONG_MAX;
 
@@ -67,7 +74,8 @@ static ucs_status_t uct_rocm_cma_query_md_resources(uct_md_resource_desc_t **res
     ucs_status_t status;
 
     /* Initialize ROCm helper library.
-     * HSA RT will be initialized as part of library initialization.
+     * If needed HSA RT  will be initialized as part of library
+     * initialization.
     */
     if (uct_rocm_init() != HSA_STATUS_SUCCESS) {
         ucs_error("Could not initialize ROCm support");
@@ -94,13 +102,27 @@ static ucs_status_t uct_rocm_cma_mem_reg(uct_md_h md, void *address, size_t leng
                                      unsigned flags, uct_mem_h *memh_p)
 {
     uct_rocm_cma_key_t *key;
+    uct_rocm_cma_md_t *rocm_md = (uct_rocm_cma_md_t *)md;
+    hsa_status_t  status;
+    void *gpu_address;
 
-    ucs_trace("uct_rocm_cma_mem_reg: address 0x%p size 0x%lx memh %p (%p)",
-              address, length, memh_p, *memh_p);
+    ucs_trace("uct_rocm_cma_mem_reg: address %p length 0x%lx", address, length);
 
-    if (!uct_rocm_is_ptr_gpu_accessible(address)) {
-        ucs_trace("Address %p is not GPU allocated.", address);
-        return UCS_ERR_INVALID_ADDR;
+    if (!uct_rocm_is_ptr_gpu_accessible(address, &gpu_address)) {
+        if (!rocm_md->any_memory) {
+            ucs_warn("Address %p is not GPU allocated.", address);
+            return UCS_ERR_INVALID_ADDR;
+        } else {
+
+            status =  uct_rocm_memory_lock(address, length, &gpu_address);
+
+            if (status != HSA_STATUS_SUCCESS) {
+                ucs_error("Could not lock  %p. Status %d", address, status);
+                return UCS_ERR_INVALID_ADDR;
+            } else {
+                ucs_trace("Lock address %p as GPU %p", address, gpu_address);
+            }
+        }
     }
 
     key = ucs_malloc(sizeof(uct_rocm_cma_key_t), "uct_rocm_cma_key_t");
@@ -111,7 +133,7 @@ static ucs_status_t uct_rocm_cma_mem_reg(uct_md_h md, void *address, size_t leng
     ucs_trace("uct_rocm_cma_mem_reg: allocated key %p", key);
 
     key->length     = length;
-    key->address    = (uintptr_t) address;
+    key->address    = (uintptr_t) gpu_address;
 
     *memh_p = key;
 
@@ -138,6 +160,7 @@ static ucs_status_t uct_rocm_cma_rkey_pack(uct_md_h md, uct_mem_h memh,
 {
     uct_rocm_cma_key_t *packed = (uct_rocm_cma_key_t *)rkey_buffer;
     uct_rocm_cma_key_t *key    = (uct_rocm_cma_key_t *)memh;
+
     packed->length      = key->length;
     packed->address     = key->address;
 
@@ -203,6 +226,7 @@ static ucs_status_t uct_rocm_cma_md_open(const char *md_name, const uct_md_confi
     rocm_md->super.ops = &md_ops;
     rocm_md->super.component = &uct_rocm_cma_md_component;
     rocm_md->any_memory = md_config->any_memory;
+    rocm_md->acc_dev    = md_config->acc_dev;
 
     *md_p = (uct_md_h)rocm_md;
 
@@ -214,6 +238,6 @@ static ucs_status_t uct_rocm_cma_md_open(const char *md_name, const uct_md_confi
 UCT_MD_COMPONENT_DEFINE(uct_rocm_cma_md_component, UCT_ROCM_CMA_MD_NAME,
                         uct_rocm_cma_query_md_resources, uct_rocm_cma_md_open, 0,
                         uct_rocm_cma_rkey_unpack,
-                        uct_rocm_cma_rkey_release, "ROCM_",
+                        uct_rocm_cma_rkey_release, "ROCM_CMA_MD_",
                         uct_rocm_cma_md_config_table,
                         uct_rocm_cma_md_config_t);

@@ -34,7 +34,8 @@ static ucs_status_t uct_rocm_ipc_md_query(uct_md_h md, uct_md_attr_t *md_attr)
     ucs_trace("uct_rocm_ipc_md_query");
 
     md_attr->rkey_packed_size  = sizeof(uct_rocm_ipc_key_t);
-    md_attr->cap.flags         = UCT_MD_FLAG_REG;
+    md_attr->cap.flags         = UCT_MD_FLAG_REG |
+                                 UCT_MD_FLAG_NEED_RKEY;
     md_attr->cap.max_alloc     = 0;
     md_attr->cap.max_reg       = ULONG_MAX;
 
@@ -87,7 +88,7 @@ static ucs_status_t uct_rocm_ipc_mem_reg(uct_md_h md, void *address, size_t leng
     ucs_trace("uct_rocm_ipc_mem_reg: address 0x%p size 0x%lx memh %p (%p)",
               address, length, memh_p, *memh_p);
 
-    if (!uct_rocm_is_ptr_gpu_accessible(address)) {
+    if (!uct_rocm_is_ptr_gpu_accessible(address, NULL)) {
         ucs_trace("Address %p is not GPU allocated.", address);
         return UCS_ERR_INVALID_ADDR;
     }
@@ -214,7 +215,7 @@ static ucs_status_t uct_rocm_ipc_md_open(const char *md_name, const uct_md_confi
 UCT_MD_COMPONENT_DEFINE(uct_rocm_ipc_md_component, UCT_ROCM_IPC_MD_NAME,
                         uct_rocm_ipc_query_md_resources, uct_rocm_ipc_md_open, 0,
                         uct_rocm_ipc_rkey_unpack,
-                        uct_rocm_ipc_rkey_release, "ROCM_",
+                        uct_rocm_ipc_rkey_release, "ROCMIPC_",
                         uct_md_config_table,
                         uct_md_config_t);
 

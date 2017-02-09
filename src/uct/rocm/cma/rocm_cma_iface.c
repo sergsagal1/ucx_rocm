@@ -31,10 +31,14 @@
 #include <uct/sm/base/sm_iface.h>
 
 /**
- * Specify special environment variables to tune ROCm transport.
+ * Specify special environment variables to tune ROCm interface.
  * So far none but keep for future.
  */
 static ucs_config_field_t uct_rocm_cma_iface_config_table[] = {
+
+    /** @note: Some super options doesn't make any sense for ROCm
+        but keep them to have compatibility with upper logic dependencies
+        on uct_iface_config_t */
 
     {"", "", NULL,
      ucs_offsetof(uct_rocm_cma_iface_config_t, super),
@@ -49,6 +53,7 @@ UCT_MD_REGISTER_TL(&uct_rocm_cma_md_component, &uct_rocm_cma_tl);
 static ucs_status_t uct_rocm_cma_iface_get_address(uct_iface_t *tl_iface,
                                                    uct_iface_addr_t *addr)
 {
+    /* Use process id as interface address */
     *(pid_t*)addr = getpid();
     return UCS_OK;
 }
@@ -122,13 +127,12 @@ static UCS_CLASS_INIT_FUNC(uct_rocm_cma_iface_t, uct_md_h md, uct_worker_h worke
                            const uct_iface_params_t *params,
                            const uct_iface_config_t *tl_config)
 {
+
     UCS_CLASS_CALL_SUPER_INIT(uct_base_iface_t, &uct_rocm_cma_iface_ops, md, worker,
-                              tl_config UCS_STATS_ARG(NULL));
+                              tl_config UCS_STATS_ARG(params->stats_root)
+                              UCS_STATS_ARG(UCT_ROCM_CMA_TL_NAME));
 
-                              // tl_config UCS_STATS_ARG(params->stats_root)
-                              // UCS_STATS_ARG(UCT_ROCM_CMA_TL_NAME));
     self->rocm_md = (uct_rocm_cma_md_t *)md;
-
 
     return UCS_OK;
 }
@@ -153,9 +157,10 @@ static ucs_status_t uct_rocm_cma_query_tl_resources(uct_md_h md,
 {
 
     /** @note Report the single device due to the complexity to deal with
-     *        numerous agents (including GPUs cases) especially for
+     *        numerous agents (multi-GPUs cases) especially for
      *        p2p transfer cases.
      */
+    uct_rocm_cma_md_t *rocm_md = (uct_rocm_cma_md_t *)md;
 
     uct_tl_resource_desc_t *resource;
 
@@ -173,8 +178,17 @@ static ucs_status_t uct_rocm_cma_query_tl_resources(uct_md_h md,
     ucs_trace("uct_rocm_cma_query_tl_resources: TL %s, DEV %s",
                         resource->tl_name, resource->dev_name);
 
-    /* Specify device type as "accelerator" device.*/
-    resource->dev_type = UCT_DEVICE_TYPE_ACC;
+    /* Note: acc_dev is controlled by environment variable */
+    if (rocm_md->acc_dev) {
+        resource->dev_type = UCT_DEVICE_TYPE_ACC;  /* Specify device type as
+                                                    "accelerator" device.*/
+        ucs_trace("uct_rocm_cma_query_tl_resources(): Set dev_type as UCT_DEVICE_TYPE_ACC");
+    }
+    else {
+        resource->dev_type = UCT_DEVICE_TYPE_SHM;  /* Specify device type as
+                                                      "shared memory" device.*/
+        ucs_trace("uct_rocm_cma_query_tl_resources(): Set dev_type as UCT_DEVICE_TYPE_SHM");
+    }
 
     *num_resources_p = 1;
     *resource_p      = resource;
@@ -187,7 +201,7 @@ UCT_TL_COMPONENT_DEFINE(uct_rocm_cma_tl,
                         uct_rocm_cma_query_tl_resources,
                         uct_rocm_cma_iface_t,
                         UCT_ROCM_CMA_TL_NAME,
-                        "ROCM_",
+                        "ROCM_CMA_TL_",
                         uct_rocm_cma_iface_config_table,
                         uct_rocm_cma_iface_config_t);
 

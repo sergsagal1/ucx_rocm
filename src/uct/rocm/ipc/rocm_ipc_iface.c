@@ -36,8 +36,9 @@ UCT_MD_REGISTER_TL(&uct_rocm_ipc_md_component, &uct_rocm_ipc_tl);
 static ucs_status_t uct_rocm_ipc_iface_query(uct_iface_h tl_iface,
                                          uct_iface_attr_t *iface_attr)
 {
-    memset(iface_attr, 0, sizeof(uct_iface_attr_t));
     ucs_trace("uct_rocm_ipc_iface_query");
+
+    memset(iface_attr, 0, sizeof(uct_iface_attr_t));
 
     /* default values for all shared memory transports */
 
@@ -137,6 +138,8 @@ static ucs_status_t uct_rocm_ipc_query_tl_resources(uct_md_h md,
                       UCT_ROCM_IPC_TL_NAME);
     ucs_snprintf_zero(resource->dev_name, sizeof(resource->dev_name), "%s",
                       md->component->name);
+    ucs_trace("uct_rocm_ipc_query_tl_resources(): TL '%s', DEV '%s'",
+                       resource->tl_name, resource->dev_name);
 
     /* Specify device type as "accelerator" device.*/
     resource->dev_type = UCT_DEVICE_TYPE_ACC;
@@ -164,7 +167,7 @@ UCT_TL_COMPONENT_DEFINE(uct_rocm_ipc_tl,
                         uct_rocm_ipc_query_tl_resources,
                         uct_rocm_ipc_iface_t,
                         UCT_ROCM_IPC_TL_NAME,
-                        "ROCM_",
+                        "ROCMIPC_",
                         uct_rocm_ipc_iface_config_table,
                         uct_rocm_ipc_iface_config_t);
 
