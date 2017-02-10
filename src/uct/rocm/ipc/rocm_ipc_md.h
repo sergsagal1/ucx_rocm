@@ -49,6 +49,15 @@ typedef struct uct_rocm_ipc_md {
 } uct_rocm_ipc_md_t;
 
 /**
+ * ROCm  IPC memory domain configuration.
+ */
+typedef struct uct_rocm_ipc_md_config {
+    uct_md_config_t super;
+} uct_rocm_ipc_md_config_t;
+
+
+
+/**
  * @brief ROCm packed and remote key
  */
 typedef struct uct_rocm_ipc_key {

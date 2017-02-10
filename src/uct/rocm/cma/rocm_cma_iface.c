@@ -96,11 +96,14 @@ static ucs_status_t uct_rocm_cma_iface_query(uct_iface_h tl_iface,
      * Question: How to handle/choose the correct one in the multi-GPUs case
      *           when latency could depends on source and target location?
      *
+     * Keep value the same as for CMA transport
+     *
      */
     iface_attr->latency.overhead        = 80e-9; /* 80 ns */
     iface_attr->latency.growth          = 0;
-    iface_attr->bandwidth              = 6911 * 1024.0 * 1024.0;
-    iface_attr->overhead               = 50e-6; /* 50 us */
+    iface_attr->bandwidth               = 10240 * 1024.0 * 1024.0; /* 10240 MB*/
+    iface_attr->overhead                = 0.4e-6; /* 0.4 us */
+
 
     return UCS_OK;
 }
@@ -201,7 +204,7 @@ UCT_TL_COMPONENT_DEFINE(uct_rocm_cma_tl,
                         uct_rocm_cma_query_tl_resources,
                         uct_rocm_cma_iface_t,
                         UCT_ROCM_CMA_TL_NAME,
-                        "ROCM_CMA_TL_",
+                        "ROCMCMA_TL_",
                         uct_rocm_cma_iface_config_table,
                         uct_rocm_cma_iface_config_t);
 

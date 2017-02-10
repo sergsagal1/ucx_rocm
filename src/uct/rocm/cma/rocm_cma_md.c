@@ -58,9 +58,9 @@ static ucs_status_t uct_rocm_cma_md_query(uct_md_h md, uct_md_attr_t *md_attr)
     md_attr->cap.max_alloc     = 0;
     md_attr->cap.max_reg       = ULONG_MAX;
 
-    /** @todo: Put the real numbers */
-    md_attr->reg_cost.overhead = 1000.0e-9;
-    md_attr->reg_cost.growth   = 0.007e-9;
+    /** @todo: Put the real numbers. Copied from cma md */
+    md_attr->reg_cost.overhead = 9e-9;
+    md_attr->reg_cost.growth   = 0;
 
     memset(&md_attr->local_cpus, 0xff, sizeof(md_attr->local_cpus));
     return UCS_OK;
@@ -238,6 +238,6 @@ static ucs_status_t uct_rocm_cma_md_open(const char *md_name, const uct_md_confi
 UCT_MD_COMPONENT_DEFINE(uct_rocm_cma_md_component, UCT_ROCM_CMA_MD_NAME,
                         uct_rocm_cma_query_md_resources, uct_rocm_cma_md_open, 0,
                         uct_rocm_cma_rkey_unpack,
-                        uct_rocm_cma_rkey_release, "ROCM_CMA_MD_",
+                        uct_rocm_cma_rkey_release, "ROCMCMA_MD_",
                         uct_rocm_cma_md_config_table,
                         uct_rocm_cma_md_config_t);

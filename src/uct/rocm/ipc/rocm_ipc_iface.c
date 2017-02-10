@@ -42,13 +42,21 @@ static ucs_status_t uct_rocm_ipc_iface_query(uct_iface_h tl_iface,
 
     /* default values for all shared memory transports */
 
-    iface_attr->cap.put.max_zcopy      = SIZE_MAX;
-    iface_attr->cap.put.max_iov        = uct_rocm_ipc_iface_get_max_iov();
+    iface_attr->cap.put.min_zcopy       = 0;
+    iface_attr->cap.put.max_zcopy       = SIZE_MAX;
+    iface_attr->cap.put.opt_zcopy_align = sizeof(uint32_t);
+    iface_attr->cap.put.align_mtu       = iface_attr->cap.put.opt_zcopy_align;
+    iface_attr->cap.put.max_iov         = uct_rocm_ipc_iface_get_max_iov();
 
-    iface_attr->cap.get.max_zcopy      = SIZE_MAX;
-    iface_attr->cap.get.max_iov        = uct_rocm_ipc_iface_get_max_iov();
+    iface_attr->cap.get.min_zcopy       = 0;
+    iface_attr->cap.get.max_zcopy       = SIZE_MAX;
+    iface_attr->cap.get.opt_zcopy_align = iface_attr->cap.put.opt_zcopy_align;
+    iface_attr->cap.get.align_mtu       = iface_attr->cap.get.opt_zcopy_align;
+    iface_attr->cap.get.max_iov         = uct_rocm_ipc_iface_get_max_iov();
 
-    iface_attr->cap.am.max_iov         = 1;
+    iface_attr->cap.am.max_iov          = 1;
+    iface_attr->cap.am.opt_zcopy_align  = 1;
+    iface_attr->cap.am.align_mtu        = iface_attr->cap.am.opt_zcopy_align;
 
 
     iface_attr->iface_addr_len         = 0;
@@ -56,6 +64,7 @@ static ucs_status_t uct_rocm_ipc_iface_query(uct_iface_h tl_iface,
     iface_attr->ep_addr_len            = 0;
     iface_attr->cap.flags              = UCT_IFACE_FLAG_GET_ZCOPY |
                                          UCT_IFACE_FLAG_PUT_ZCOPY |
+                                         UCT_IFACE_FLAG_PENDING   |
                                          UCT_IFACE_FLAG_CONNECT_TO_IFACE;
 
     /**
@@ -64,11 +73,14 @@ static ucs_status_t uct_rocm_ipc_iface_query(uct_iface_h tl_iface,
      * Question: How to handle/choose the correct one in the multi-GPUs case
      *           when latency could depends on source and target location?
      *
+     * Keep value the same as for CMA transport
+     *
      */
     iface_attr->latency.overhead        = 80e-9; /* 80 ns */
     iface_attr->latency.growth          = 0;
-    iface_attr->bandwidth              = 6911 * 1024.0 * 1024.0;
-    iface_attr->overhead               = 50e-6; /* 50 us */
+    iface_attr->bandwidth               = 10240 * 1024.0 * 1024.0; /* 10240 MB*/
+    iface_attr->overhead                = 0.4e-6; /* 0.4 us */
+
 
     return UCS_OK;
 }
@@ -87,6 +99,7 @@ static uct_iface_ops_t uct_rocm_ipc_iface_ops = {
     .ep_fence            = uct_sm_ep_fence,
     .ep_create_connected = UCS_CLASS_NEW_FUNC_NAME(uct_rocm_ipc_ep_t),
     .ep_destroy          = UCS_CLASS_DELETE_FUNC_NAME(uct_rocm_ipc_ep_t),
+    .ep_pending_purge    = (void*)ucs_empty_function_return_success,
 };
 
 
@@ -95,7 +108,9 @@ static UCS_CLASS_INIT_FUNC(uct_rocm_ipc_iface_t, uct_md_h md, uct_worker_h worke
                            const uct_iface_config_t *tl_config)
 {
     UCS_CLASS_CALL_SUPER_INIT(uct_base_iface_t, &uct_rocm_ipc_iface_ops, md, worker,
-                              tl_config UCS_STATS_ARG(NULL));
+                              tl_config UCS_STATS_ARG(params->stats_root)
+                              UCS_STATS_ARG(UCT_ROCM_IPC_TL_NAME));
+
     self->rocm_md = (uct_rocm_ipc_md_t *)md;
 
 
@@ -167,7 +182,7 @@ UCT_TL_COMPONENT_DEFINE(uct_rocm_ipc_tl,
                         uct_rocm_ipc_query_tl_resources,
                         uct_rocm_ipc_iface_t,
                         UCT_ROCM_IPC_TL_NAME,
-                        "ROCMIPC_",
+                        "ROCMIPC_TL_",
                         uct_rocm_ipc_iface_config_table,
                         uct_rocm_ipc_iface_config_t);
 
