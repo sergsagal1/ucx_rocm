@@ -69,6 +69,7 @@ typedef struct uct_rocm_cma_md_config {
 typedef struct uct_rocm_cma_key {
     size_t               length;      /**< Size of memory */
     uintptr_t            address;     /**< Local address of memory */
+    int                  is_locked;   /**< If memory was "locked" in GPU space */
 } uct_rocm_cma_key_t;
 
 #endif

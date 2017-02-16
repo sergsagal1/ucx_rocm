@@ -36,10 +36,13 @@
 #include <hsa.h>
 #include <hsa_ext_amd.h>
 
-
 static hsa_agent_t              hsa_agent;
 static hsa_amd_memory_pool_t    hsa_pool;
 
+/* Max. number of HSA agents supported */
+#define MAX_HSA_AGENTS         256
+static hsa_agent_t              gpu_agents[MAX_HSA_AGENTS];
+static int16_t                  num_of_gpu;
 
 static unsigned long hsa_iterate_index;
 
@@ -52,43 +55,45 @@ static hsa_status_t hsa_agent_callback(hsa_agent_t agent, void* data)
     hsa_status_t status;
     unsigned long hsa_agent_index = *(unsigned long *)data;
 
+    status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
+
+    if (status != HSA_STATUS_SUCCESS) {
+        ucs_error("Failure to get agent name : 0x%x\n", status);
+        return status;
+    }
+
+    status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+
+    if (status != HSA_STATUS_SUCCESS) {
+        ucs_error("failure to get device type: 0x%x\n", status);
+        return status;
+    }
+
+    if (device_type == HSA_DEVICE_TYPE_GPU) {
+        status = hsa_agent_get_info(agent, HSA_AMD_AGENT_INFO_BDFID, &bdfid);
+        if (status != HSA_STATUS_SUCCESS) {
+            ucs_error("failure to get pci info: 0x%x\n", status);
+            return status;
+        }
+
+            // bfd: eight-bit pci bus, five-bit device, and three-bit
+            // function number
+            uint32_t Bus	= (bdfid >> 8) & 0xff;
+            uint32_t Device	= (bdfid >> 3) & 0x1F;
+            uint32_t Func	= bdfid & 0x7;
+
+            ucs_info("Found HSA GPU agent : %s (PCI [ B#%02d, D#%02d, F#%02d ]\n",
+                    name, Bus, Device, Func);
+
+            gpu_agents[num_of_gpu] = agent;
+            num_of_gpu++;
+    }
+    else {
+            ucs_info("Found HSA CPU agent : %s.\n", name);
+    }
+
     if (hsa_iterate_index == hsa_agent_index) {
-        status = hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
-
-        if (status != HSA_STATUS_SUCCESS) {
-            ucs_error("Failure to get agent name : 0x%x\n", status);
-            return status;
-        }
-
-        status = hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
-
-        if (status != HSA_STATUS_SUCCESS) {
-            ucs_error("failure to get device type: 0x%x\n", status);
-            return status;
-        }
-
-        if (device_type == HSA_DEVICE_TYPE_GPU) {
-            status = hsa_agent_get_info(agent, HSA_AMD_AGENT_INFO_BDFID, &bdfid);
-            if (status != HSA_STATUS_SUCCESS) {
-                ucs_error("failure to get pci info: 0x%x\n", status);
-                return status;
-            }
-
-                // bfd: eight-bit pci bus, five-bit device, and three-bit
-                // function number
-                uint32_t Bus	= (bdfid >> 8) & 0xff;
-                uint32_t Device	= (bdfid >> 3) & 0x1F;
-                uint32_t Func	= bdfid & 0x7;
-
-                ucs_info("Found HSA GPU agent : %s (PCI [ B#%02d, D#%02d, F#%02d ]\n",
-                        name, Bus, Device, Func);
-        }
-        else {
-                ucs_info("Found HSA CPU agent : %s.\n", name);
-        }
-
         hsa_agent = agent;
-        return HSA_STATUS_INFO_BREAK;
     }
 
     hsa_iterate_index++;
@@ -147,7 +152,6 @@ static hsa_status_t memory_pool_callback(hsa_amd_memory_pool_t memory_pool, void
 
     return HSA_STATUS_SUCCESS;
 }
-
 
 ucs_status_t rocm_init(ucx_perf_params_t *params)
 {
@@ -224,7 +228,20 @@ void *rocm_allocate_transfer_buffer(ucx_perf_params_t *params, size_t buffer_siz
         return NULL;
     }
 
+    status = hsa_amd_agents_allow_access(num_of_gpu,
+                                         gpu_agents,
+                                         NULL,  p);
+
+
     ucs_debug("Allocated HSA buffer at %p\n", p);
+
+    if (status != HSA_STATUS_SUCCESS) {
+        ucs_error("Failure to allow access for all GPUs agent. Status 0x%x\n",
+                    status);
+
+        rocm_free_transfer_buffer(p);
+        p = NULL;
+    }
 
     return p;
 }

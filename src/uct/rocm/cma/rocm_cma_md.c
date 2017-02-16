@@ -108,6 +108,16 @@ static ucs_status_t uct_rocm_cma_mem_reg(uct_md_h md, void *address, size_t leng
 
     ucs_trace("uct_rocm_cma_mem_reg: address %p length 0x%lx", address, length);
 
+    key = ucs_malloc(sizeof(uct_rocm_cma_key_t), "uct_rocm_cma_key_t");
+    if (NULL == key) {
+        ucs_error("Failed to allocate memory for uct_rocm_cma_key_t");
+        return UCS_ERR_NO_MEMORY;
+    }
+    ucs_trace("uct_rocm_cma_mem_reg: allocated key %p", key);
+
+    /* Assume memory is already GPU accessible */
+    key->is_locked = 0;
+
     if (!uct_rocm_is_ptr_gpu_accessible(address, &gpu_address)) {
         if (!rocm_md->any_memory) {
             ucs_warn("Address %p is not GPU allocated.", address);
@@ -121,16 +131,10 @@ static ucs_status_t uct_rocm_cma_mem_reg(uct_md_h md, void *address, size_t leng
                 return UCS_ERR_INVALID_ADDR;
             } else {
                 ucs_trace("Lock address %p as GPU %p", address, gpu_address);
+                key->is_locked  = 1;
             }
         }
     }
-
-    key = ucs_malloc(sizeof(uct_rocm_cma_key_t), "uct_rocm_cma_key_t");
-    if (NULL == key) {
-        ucs_error("Failed to allocate memory for uct_rocm_cma_key_t");
-        return UCS_ERR_NO_MEMORY;
-    }
-    ucs_trace("uct_rocm_cma_mem_reg: allocated key %p", key);
 
     key->length     = length;
     key->address    = (uintptr_t) gpu_address;
@@ -147,9 +151,14 @@ static ucs_status_t uct_rocm_cma_mem_dereg(uct_md_h md, uct_mem_h memh)
     uct_rocm_cma_key_t *key = (uct_rocm_cma_key_t *)memh;
     ucs_trace("uct_rocm_cma_mem_dereg: key  %p", key);
 
-    /* We should do nothing. If memory was shared then it will be
-     * shared till all processes "free" such memory.
-     */
+    if (key->is_locked) {
+        hsa_status_t status = hsa_amd_memory_unlock((void *)key->address);
+
+        if (status != HSA_STATUS_SUCCESS) {
+            ucs_warn("Failed to unlock memory (%p): 0x%x\n",
+                                        (void *)key->address, status);
+        }
+    }
 
     ucs_free(key);
     return UCS_OK;

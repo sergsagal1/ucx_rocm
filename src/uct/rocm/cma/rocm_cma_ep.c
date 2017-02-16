@@ -35,107 +35,6 @@
 /* Include HSA Thunk header file */
 #include <hsakmt.h>
 
-
-/* Temporally definition of ROCm CMA API till it will be officially
-   published
-*/
-#include <sys/uio.h>
-
-ssize_t process_vm_readv(pid_t pid,
-                                const struct iovec *local_iov,
-                                unsigned long liovcnt,
-                                const struct iovec *remote_iov,
-                                unsigned long riovcnt,
-                                unsigned long flags);
-
-ssize_t process_vm_writev(pid_t pid,
-                                 const struct iovec *local_iov,
-                                 unsigned long liovcnt,
-                                 const struct iovec *remote_iov,
-                                 unsigned long riovcnt,
-                                 unsigned long flags);
-
-typedef struct _HsaMemoryRange {
-	void               *MemoryAddress;   // Pointer to GPU memory
-	HSAuint64          SizeInBytes;      // Size of above memory
-} HsaMemoryRange;
-
-HSAKMT_STATUS
-HSAKMTAPI
-hsaKmtProcessVMRead(
-	pid_t                     Pid,                     // IN
-	HsaMemoryRange            *LocalMemoryArray,       // IN
-	HSAuint64                 LocalMemoryArrayCount,   // IN
-	HsaMemoryRange            *RemoteMemoryArray,      // IN
-	HSAuint64                 RemoteMemoryArrayCount,  // IN
-	HSAuint64                 *SizeCopied              // OUT
-)
-{
-
-    struct iovec local_iov[UCT_SM_MAX_IOV];
-    struct iovec remote_iov;
-    size_t i;
-
-    for (i = 0; i < LocalMemoryArrayCount; i++) {
-        local_iov[i].iov_base = LocalMemoryArray[i].MemoryAddress;
-        local_iov[i].iov_len  = LocalMemoryArray[i].SizeInBytes;
-    }
-
-    remote_iov.iov_base = RemoteMemoryArray[0].MemoryAddress;
-    remote_iov.iov_len  = RemoteMemoryArray[0].SizeInBytes;
-
-    ssize_t ret = process_vm_readv(Pid, local_iov, i, &remote_iov, 1, 0);
-
-    ucs_trace("hsaKmtProcessVMRead was called. Return %d\n", (int) ret);
-    *SizeCopied = ret;
-
-    return 0;
-}
-
-HSAKMT_STATUS
-HSAKMTAPI
-hsaKmtProcessVMWrite(
-	pid_t                     Pid,                     // IN
-	HsaMemoryRange            *LocalMemoryArray,       // IN
-	HSAuint64                 LocalMemoryArrayCount,   // IN
-	HsaMemoryRange            *RemoteMemoryArray,      // IN
-	HSAuint64                 RemoteMemoryArrayCount,  // IN
-	HSAuint64                 *SizeCopied              // OUT
-)
-{
-
-    struct iovec local_iov[UCT_SM_MAX_IOV];
-    struct iovec remote_iov;
-    size_t i;
-
-   //ucs_error("hsaKmtProcessVMWrite: LocalCount %d", (int) LocalMemoryArrayCount);
-
-    for (i = 0; i < LocalMemoryArrayCount; i++) {
-        local_iov[i].iov_base = LocalMemoryArray[i].MemoryAddress;
-        local_iov[i].iov_len  = LocalMemoryArray[i].SizeInBytes;
-        ucs_trace("hsaKmtProcessVMWrite:: iov_base %p len %d",
-                   (void *)local_iov[i].iov_base, (int) local_iov[i].iov_len);
-    }
-
-    remote_iov.iov_base = RemoteMemoryArray[0].MemoryAddress;
-    remote_iov.iov_len  = RemoteMemoryArray[0].SizeInBytes;
-        ucs_trace("hsaKmtProcessVMWrite:: Remote iov_base %p len %d",
-                   (void *)remote_iov.iov_base, (int) remote_iov.iov_len);
-
-    ucs_trace("Copy: Remote pid: 0%x", Pid);
-    ssize_t ret = process_vm_writev(Pid, local_iov,
-                                   LocalMemoryArrayCount,
-                                   &remote_iov, 1, 0);
-
-
-    ucs_trace("hsaKmtProcessVMWrite was called. Return %d\n", (int) ret);
-    *SizeCopied = ret;
-
-    return 0;
-}
-
-/* ^^^^^^^^^^^^^^^^^^^ END OF TEMPORALLY CODE */
-
 static UCS_CLASS_INIT_FUNC(uct_rocm_cma_ep_t, uct_iface_t *tl_iface,
                            const uct_device_addr_t *dev_addr,
                            const uct_iface_addr_t *iface_addr)
@@ -165,12 +64,56 @@ UCS_CLASS_DEFINE_DELETE_FUNC(uct_rocm_cma_ep_t, uct_ep_t);
     ucs_trace_data(_fmt " to %"PRIx64"(%+ld)", ## __VA_ARGS__, (_remote_addr), \
                    (_rkey))
 
+
+static ucs_status_t uct_rocm_cma_ptr_to_gpu_ptr(void *ptr, void **gpu_address,
+                                                size_t size, int any_memory,
+                                                int *locked)
+{
+    if (!uct_rocm_is_ptr_gpu_accessible(ptr, gpu_address)) {
+        if (!any_memory) {
+            ucs_warn("Address %p is not GPU registered", ptr);
+            return UCS_ERR_INVALID_ADDR;
+        } else {
+
+            hsa_status_t status =  uct_rocm_memory_lock(ptr, size, gpu_address);
+
+            if (status != HSA_STATUS_SUCCESS) {
+                ucs_error("Could not lock  %p. Status %d", ptr, status);
+                return UCS_ERR_INVALID_ADDR;
+            } else {
+                ucs_trace("Lock address %p as GPU %p", ptr, *gpu_address);
+            }
+        }
+    }
+
+    return UCS_OK;
+}
+
+
+
+static void uct_rocm_cma_unlock_ptrs(void **local_ptr, int *locked,
+                                     size_t local_iov_it)
+{
+    size_t index;
+
+    for (index = 0; index < local_iov_it; index++) {
+        if (locked[index]) {
+            hsa_status_t status = hsa_amd_memory_unlock(local_ptr[index]);
+
+            if (status != HSA_STATUS_SUCCESS) {
+                ucs_warn("Failed to unlock memory (%p): 0x%x\n",
+                                            local_ptr[index], status);
+            }
+        }
+    }
+}
+
 ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
                                             const uct_iov_t *iov,
                                             size_t iovcnt,
                                             uint64_t remote_addr,
                                             uct_rocm_cma_key_t *key,
-                                     HSAKMT_STATUS (*fn_p)(pid_t,
+                                     HSAKMT_STATUS (*fn_p)(HSAuint32,
 	                                                 HsaMemoryRange *,
 	                                                 HSAuint64,
 	                                                 HsaMemoryRange *,
@@ -191,7 +134,15 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
     size_t length = 0;
     HsaMemoryRange local_iov[UCT_SM_MAX_IOV];
     HsaMemoryRange remote_iov;
-    uct_rocm_cma_ep_t *ep = ucs_derived_of(tl_ep, uct_rocm_cma_ep_t);
+
+    void           *local_ptr[UCT_SM_MAX_IOV];
+    int             local_ptr_locked[UCT_SM_MAX_IOV];
+
+
+    uct_rocm_cma_ep_t    *ep      = ucs_derived_of(tl_ep, uct_rocm_cma_ep_t);
+    uct_rocm_cma_iface_t *iface   = ucs_derived_of(tl_ep->iface, uct_rocm_cma_iface_t);
+    uct_rocm_cma_md_t    *rocm_md = (uct_rocm_cma_md_t *)iface->super.md;
+
 
     ucs_trace("uct_rocm_cma_ep_common_zcopy (%s): remote_addr: %p (gpu %p)",
                 fn_name, (void *)remote_addr, (void*)key->address);
@@ -220,12 +171,35 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
                 }
             }
 
-            local_iov[local_iov_it].MemoryAddress = (void *)((char *)iov[iov_it].buffer +
+            local_ptr[local_iov_it]             = (void *)((char *)iov[iov_it].buffer +
                                                         iov_slice_delivered);
-            local_iov[local_iov_it].SizeInBytes   = iov_slice_length - iov_slice_delivered;
+            local_iov[local_iov_it].SizeInBytes = iov_slice_length - iov_slice_delivered;
+
+            /* It is possible that we get host (CPU) address as local address.
+             * We need to get GPU address to be used for CMA operation.
+             * If this is memory was not yet registered with ROCm stack and
+             * flag "any_memory" is set than lock this memory.
+             */
+            ucs_status_t ucs_status = uct_rocm_cma_ptr_to_gpu_ptr(local_ptr[local_iov_it],
+                                            &local_iov[local_iov_it].MemoryAddress,
+                                            local_iov[local_iov_it].SizeInBytes,
+                                            rocm_md->any_memory,
+                                            &local_ptr_locked[local_iov_it]);
+
+            if (ucs_status != UCS_OK) {
+                uct_rocm_cma_unlock_ptrs(local_ptr, local_ptr_locked, local_iov_it);
+                return ucs_status;
+            }
+
+            ucs_trace("uct_rocm_cma_ep_common_zcopy: [%d] Local address %p (GPU ptr %p), Local Size 0x%x",
+                                (int) local_iov_it,
+                                local_ptr[local_iov_it],
+                                local_iov[local_iov_it].MemoryAddress,
+                                (int) local_iov[local_iov_it].SizeInBytes);
 
             ++local_iov_it;
         }
+
         if (!delivered) {
             length = iov_it_length; /* Keep total length of the iov buffers */
         }
@@ -234,23 +208,20 @@ ucs_status_t uct_rocm_cma_ep_common_zcopy(uct_ep_h tl_ep,
             return UCS_OK;          /* Nothing to deliver */
         }
 
-        ucs_trace("Remote GPU Address %p, Remote Address %p",
-                            (void *)key->address, (void *)remote_addr);
-        /* Till Thunk finish support: use CPU address for testing */
-        // remote_iov.MemoryAddress = (void *)(key->address + delivered);
-        remote_iov.MemoryAddress = (void *)(remote_addr + delivered);
-
+        remote_iov.MemoryAddress = (void *)(key->address + delivered);
         remote_iov.SizeInBytes   = length - delivered;
 
-        HSAKMT_STATUS status = fn_p(ep->remote_pid,
-                                    local_iov, local_iov_it,
-                                    &remote_iov, 1,
-                                    &SizeCopied);
+        HSAKMT_STATUS hsa_status = fn_p(ep->remote_pid,
+                                        local_iov, local_iov_it,
+                                        &remote_iov, 1,
+                                        &SizeCopied);
 
-        if (status  != HSAKMT_STATUS_SUCCESS) {
+        uct_rocm_cma_unlock_ptrs(local_ptr, local_ptr_locked, local_iov_it);
+
+        if (hsa_status  != HSAKMT_STATUS_SUCCESS) {
             ucs_error("%s  copied  %zu instead of %zu, Status  %d",
-                      fn_name, (ssize_t) SizeCopied, (ssize_t) length,
-                      status);
+                         fn_name, (ssize_t) SizeCopied, (ssize_t) length,
+                         hsa_status);
             return UCS_ERR_IO_ERROR;
         }
 

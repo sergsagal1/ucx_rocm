@@ -394,11 +394,11 @@ bool uct_rocm_is_ptr_gpu_accessible(void *ptr, void **gpu_ptr)
         if (info.type != HSA_EXT_POINTER_TYPE_UNKNOWN) {
 
             if (gpu_ptr) {
-                *gpu_ptr = info.hostBaseAddress;
+                *gpu_ptr = info.agentBaseAddress;
             }
 
-            ucs_trace("Address %p is GPU accessible *(Host addr %p)",
-                       ptr, info.hostBaseAddress);
+            ucs_trace("Address %p is GPU accessible (Agent addr %p)",
+                       ptr, info.agentBaseAddress);
 
             return true;
         }
@@ -555,7 +555,7 @@ void uct_rocm_ipc_memory_detach(void *ptr)
    hsa_status_t status = hsa_amd_ipc_memory_detach(ptr);
 
    if (status != HSA_STATUS_SUCCESS) {
-        ucs_error("hsa_amd_ipc_memory_detach failure. Ptr 0x%p. Status 0x%x",
+        ucs_error("hsa_amd_ipc_memory_detach failure. Ptr %p. Status 0x%x",
                 ptr, status);
    }
 }
