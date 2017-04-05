@@ -30,6 +30,8 @@
 /* @note: Treat ROCM memory as the special case of shared memory. */
 #include <uct/sm/base/sm_iface.h>
 
+#include <ucs/sys/string.h>
+
 
 UCT_MD_REGISTER_TL(&uct_rocm_ipc_md_component, &uct_rocm_ipc_tl);
 

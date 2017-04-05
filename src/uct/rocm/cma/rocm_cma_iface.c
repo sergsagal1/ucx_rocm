@@ -30,6 +30,8 @@
 /* Note: Treat ROCM memory as the special case of shared memory. */
 #include <uct/sm/base/sm_iface.h>
 
+#include <ucs/sys/string.h>
+
 /**
  * Specify special environment variables to tune ROCm interface.
  * So far none but keep for future.

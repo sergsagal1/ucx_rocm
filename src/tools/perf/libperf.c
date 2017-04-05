@@ -1407,7 +1407,7 @@ ucs_status_t ucx_perf_run(ucx_perf_params_t *params, ucx_perf_result_t *result)
     }
 
 out_cleanup:
-    ucx_perf_funcs[params->api].cleanup(perf);
+    ucx_perf_funcs[params->api].cleanup(perf, params);
 out_free:
     free(perf);
 out:
